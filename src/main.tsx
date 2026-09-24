@@ -70,6 +70,10 @@ type Page =
   | "admin"
   | "owner";
 
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
 function getProfileObject(
   profile: Profile | Profile[] | null | undefined,
 ): Profile | null {
@@ -80,14 +84,25 @@ function getProfileObject(
     : profile;
 }
 
+function formatDate(date: string) {
+  return new Date(date).toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/* =========================================================
+   BADGES
+   ========================================================= */
+
 function BadgeRow({ profile }: { profile: Profile }) {
   return (
     <span className="badge-row">
       {profile.verified && (
-        <span
-          className="verified-badge"
-          title="Verifiziert"
-        >
+        <span className="verified-badge" title="Verifiziert">
           <CheckCircle2 size={15} />
         </span>
       )}
@@ -95,25 +110,23 @@ function BadgeRow({ profile }: { profile: Profile }) {
       {(profile.role === "ADMIN" ||
         profile.role === "MODERATOR" ||
         profile.role === "OWNER") && (
-        <span
-          className="admin-badge"
-          title="Team"
-        >
+        <span className="admin-badge" title="Team">
           <Shield size={14} />
         </span>
       )}
 
       {profile.role === "OWNER" && (
-        <span
-          className="owner-badge"
-          title="Owner"
-        >
+        <span className="owner-badge" title="Owner">
           <Crown size={14} />
         </span>
       )}
     </span>
   );
 }
+
+/* =========================================================
+   AVATAR
+   ========================================================= */
 
 function Avatar({
   profile,
@@ -155,18 +168,8 @@ function Avatar({
   );
 }
 
-function formatDate(date: string) {
-  return new Date(date).toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 /* =========================================================
-   POST
+   POST CARD
    ========================================================= */
 
 function PostCard({
@@ -187,30 +190,20 @@ function PostCard({
   return (
     <article className="post">
       <div className="post-head">
-        <Avatar
-          profile={profile}
-          size={46}
-        />
+        <Avatar profile={profile} size={46} />
 
         <div className="post-author">
           <div className="post-name">
-            <strong>
-              {profile.display_name}
-            </strong>
-
+            <strong>{profile.display_name}</strong>
             <BadgeRow profile={profile} />
           </div>
 
           <div className="post-username">
-            @{profile.username} ·{" "}
-            {formatDate(post.created_at)}
+            @{profile.username} · {formatDate(post.created_at)}
           </div>
         </div>
 
-        <button
-          className="icon-btn"
-          type="button"
-        >
+        <button className="icon-btn" type="button">
           <MoreHorizontal size={20} />
         </button>
       </div>
@@ -231,39 +224,25 @@ function PostCard({
 
       <div className="post-actions">
         <button
-          className={`post-action ${
-            post.liked ? "liked" : ""
-          }`}
+          className={`post-action ${post.liked ? "liked" : ""}`}
           onClick={() => onLike(post)}
           disabled={!currentUserId}
           type="button"
         >
           <Heart
             size={19}
-            fill={
-              post.liked
-                ? "currentColor"
-                : "none"
-            }
+            fill={post.liked ? "currentColor" : "none"}
           />
 
-          <span>
-            {post.likes ?? 0}
-          </span>
+          <span>{post.likes ?? 0}</span>
         </button>
 
-        <button
-          className="post-action"
-          type="button"
-        >
+        <button className="post-action" type="button">
           <MessageCircle size={19} />
           <span>Kommentieren</span>
         </button>
 
-        <button
-          className="post-action"
-          type="button"
-        >
+        <button className="post-action" type="button">
           <Send size={18} />
           <span>Teilen</span>
         </button>
@@ -281,38 +260,22 @@ function AuthScreen({
 }: {
   onLogin: (session: Session) => void;
 }) {
-  const [mode, setMode] = useState<
-    "login" | "register"
-  >("login");
+  const [mode, setMode] = useState<"login" | "register">("login");
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] =
-    useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
 
-  const [username, setUsername] =
-    useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  const [displayName, setDisplayName] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [message, setMessage] =
-    useState("");
-
-  async function submit(
-    e: React.FormEvent,
-  ) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!supabase) {
-      setError(
-        "Supabase ist nicht konfiguriert.",
-      );
+      setError("Supabase ist nicht konfiguriert.");
       return;
     }
 
@@ -322,15 +285,11 @@ function AuthScreen({
 
     try {
       if (mode === "login") {
-        const {
-          data,
-          error,
-        } = await supabase.auth.signInWithPassword(
-          {
+        const { data, error } =
+          await supabase.auth.signInWithPassword({
             email,
             password,
-          },
-        );
+          });
 
         if (error) {
           throw error;
@@ -346,24 +305,18 @@ function AuthScreen({
           );
         }
 
-        const {
-          data,
-          error,
-        } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              username: username
-                .trim()
-                .toLowerCase(),
-
-              display_name:
-                displayName.trim() ||
-                username.trim(),
+        const { data, error } =
+          await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                username: username.trim().toLowerCase(),
+                display_name:
+                  displayName.trim() || username.trim(),
+              },
             },
-          },
-        });
+          });
 
         if (error) {
           throw error;
@@ -392,42 +345,26 @@ function AuthScreen({
     <div className="auth">
       <div className="authcard">
         <div className="brand">
-          <div className="brand-icon">
-            C
-          </div>
+          <div className="brand-icon">C</div>
 
           <div>
             <h1>CrowSocial</h1>
-            <p>
-              Dein soziales Netzwerk
-            </p>
+            <p>Dein soziales Netzwerk</p>
           </div>
         </div>
 
         <div className="auth-tabs">
           <button
-            className={
-              mode === "login"
-                ? "active"
-                : ""
-            }
-            onClick={() =>
-              setMode("login")
-            }
+            className={mode === "login" ? "active" : ""}
+            onClick={() => setMode("login")}
             type="button"
           >
             Anmelden
           </button>
 
           <button
-            className={
-              mode === "register"
-                ? "active"
-                : ""
-            }
-            onClick={() =>
-              setMode("register")
-            }
+            className={mode === "register" ? "active" : ""}
+            onClick={() => setMode("register")}
             type="button"
           >
             Registrieren
@@ -437,29 +374,21 @@ function AuthScreen({
         <form onSubmit={submit}>
           {mode === "register" && (
             <>
-              <label>
-                Benutzername
-              </label>
+              <label>Benutzername</label>
 
               <input
                 value={username}
-                onChange={(e) =>
-                  setUsername(e.target.value)
-                }
+                onChange={(e) => setUsername(e.target.value)}
                 placeholder="z. B. crowit"
                 autoComplete="username"
               />
 
-              <label>
-                Anzeigename
-              </label>
+              <label>Anzeigename</label>
 
               <input
                 value={displayName}
                 onChange={(e) =>
-                  setDisplayName(
-                    e.target.value,
-                  )
+                  setDisplayName(e.target.value)
                 }
                 placeholder="Dein Name"
               />
@@ -471,9 +400,7 @@ function AuthScreen({
           <input
             type="email"
             value={email}
-            onChange={(e) =>
-              setEmail(e.target.value)
-            }
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="deine@email.de"
             autoComplete="email"
           />
@@ -483,9 +410,7 @@ function AuthScreen({
           <input
             type="password"
             value={password}
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
+            onChange={(e) => setPassword(e.target.value)}
             placeholder="Passwort"
             autoComplete={
               mode === "login"
@@ -511,16 +436,16 @@ function AuthScreen({
             disabled={loading}
             type="submit"
           >
-            {loading
-              ? "Bitte warten..."
-              : mode === "login"
-                ? (
-                  <>
-                    <LogIn size={18} />
-                    Anmelden
-                  </>
-                )
-                : "Account erstellen"}
+            {loading ? (
+              "Bitte warten..."
+            ) : mode === "login" ? (
+              <>
+                <LogIn size={18} />
+                Anmelden
+              </>
+            ) : (
+              "Account erstellen"
+            )}
           </button>
         </form>
       </div>
@@ -529,7 +454,7 @@ function AuthScreen({
 }
 
 /* =========================================================
-   PROFIL BEARBEITEN
+   PROFILE EDIT
    ========================================================= */
 
 function ProfileEditModal({
@@ -541,17 +466,12 @@ function ProfileEditModal({
   onClose: () => void;
   onSaved: (profile: Profile) => void;
 }) {
-  const [username, setUsername] =
-    useState(profile.username);
-
-  const [displayName, setDisplayName] =
-    useState(profile.display_name);
-
-  const [bio, setBio] =
-    useState(profile.bio ?? "");
-
-  const [website, setWebsite] =
-    useState(profile.website ?? "");
+  const [username, setUsername] = useState(profile.username);
+  const [displayName, setDisplayName] = useState(
+    profile.display_name,
+  );
+  const [bio, setBio] = useState(profile.bio ?? "");
+  const [website, setWebsite] = useState(profile.website ?? "");
 
   const [avatarFile, setAvatarFile] =
     useState<File | null>(null);
@@ -561,37 +481,25 @@ function ProfileEditModal({
       profile.avatar_url ?? null,
     );
 
-  const [saving, setSaving] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!avatarFile) {
-      setPreviewUrl(
-        profile.avatar_url ?? null,
-      );
-
+      setPreviewUrl(profile.avatar_url ?? null);
       return;
     }
 
-    const objectUrl =
-      URL.createObjectURL(avatarFile);
+    const objectUrl = URL.createObjectURL(avatarFile);
 
     setPreviewUrl(objectUrl);
 
     return () => {
       URL.revokeObjectURL(objectUrl);
     };
-  }, [
-    avatarFile,
-    profile.avatar_url,
-  ]);
+  }, [avatarFile, profile.avatar_url]);
 
-  async function uploadAvatar(): Promise<
-    string | null
-  > {
+  async function uploadAvatar(): Promise<string | null> {
     if (!supabase) {
       throw new Error(
         "Supabase ist nicht konfiguriert.",
@@ -609,20 +517,13 @@ function ProfileEditModal({
       "image/gif",
     ];
 
-    if (
-      !allowedTypes.includes(
-        avatarFile.type,
-      )
-    ) {
+    if (!allowedTypes.includes(avatarFile.type)) {
       throw new Error(
         "Erlaubt sind nur PNG, JPG, WEBP oder GIF.",
       );
     }
 
-    if (
-      avatarFile.size >
-      5 * 1024 * 1024
-    ) {
+    if (avatarFile.size > 5 * 1024 * 1024) {
       throw new Error(
         "Das Profilbild darf maximal 5 MB groß sein.",
       );
@@ -637,20 +538,14 @@ function ProfileEditModal({
     const filePath =
       `${profile.id}/${crypto.randomUUID()}.${extension}`;
 
-    const {
-      error: uploadError,
-    } = await supabase.storage
-      .from("avatars")
-      .upload(
-        filePath,
-        avatarFile,
-        {
+    const { error: uploadError } =
+      await supabase.storage
+        .from("avatars")
+        .upload(filePath, avatarFile, {
           cacheControl: "3600",
           upsert: false,
-          contentType:
-            avatarFile.type,
-        },
-      );
+          contentType: avatarFile.type,
+        });
 
     if (uploadError) {
       throw uploadError;
@@ -659,16 +554,12 @@ function ProfileEditModal({
     const { data } =
       supabase.storage
         .from("avatars")
-        .getPublicUrl(
-          filePath,
-        );
+        .getPublicUrl(filePath);
 
     return data.publicUrl;
   }
 
-  async function saveProfile(
-    e: React.FormEvent,
-  ) {
+  async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
 
     if (!supabase) {
@@ -691,26 +582,13 @@ function ProfileEditModal({
       } = await supabase
         .from("profiles")
         .update({
-          username:
-            username
-              .trim()
-              .toLowerCase(),
-
-          display_name:
-            displayName.trim(),
-
+          username: username.trim().toLowerCase(),
+          display_name: displayName.trim(),
           bio: bio.trim(),
-
-          website:
-            website.trim(),
-
-          avatar_url:
-            finalAvatarUrl,
+          website: website.trim(),
+          avatar_url: finalAvatarUrl,
         })
-        .eq(
-          "id",
-          profile.id,
-        )
+        .eq("id", profile.id)
         .select(
           "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
         )
@@ -720,10 +598,7 @@ function ProfileEditModal({
         throw updateError;
       }
 
-      onSaved(
-        data as Profile,
-      );
-
+      onSaved(data as Profile);
       onClose();
     } catch (err) {
       setError(
@@ -740,9 +615,7 @@ function ProfileEditModal({
     <div className="modal-backdrop">
       <div className="modal">
         <div className="modal-head">
-          <h2>
-            Profil bearbeiten
-          </h2>
+          <h2>Profil bearbeiten</h2>
 
           <button
             className="icon-btn"
@@ -753,9 +626,7 @@ function ProfileEditModal({
           </button>
         </div>
 
-        <form
-          onSubmit={saveProfile}
-        >
+        <form onSubmit={saveProfile}>
           <div className="avatar-upload">
             {previewUrl ? (
               <img
@@ -765,16 +636,12 @@ function ProfileEditModal({
               />
             ) : (
               <div className="profile-preview profile-preview-empty">
-                <CircleUserRound
-                  size={45}
-                />
+                <CircleUserRound size={45} />
               </div>
             )}
 
             <div>
-              <strong>
-                Profilbild
-              </strong>
+              <strong>Profilbild</strong>
 
               <p className="muted">
                 PNG, JPG, WEBP oder GIF · maximal 5 MB
@@ -782,7 +649,6 @@ function ProfileEditModal({
 
               <label className="secondary-btn file-btn">
                 <ImageIcon size={17} />
-
                 Bild auswählen
 
                 <input
@@ -791,12 +657,9 @@ function ProfileEditModal({
                   hidden
                   onChange={(e) => {
                     const file =
-                      e.target.files?.[0] ??
-                      null;
+                      e.target.files?.[0] ?? null;
 
-                    if (!file) {
-                      return;
-                    }
+                    if (!file) return;
 
                     if (
                       ![
@@ -804,9 +667,7 @@ function ProfileEditModal({
                         "image/jpeg",
                         "image/webp",
                         "image/gif",
-                      ].includes(
-                        file.type,
-                      )
+                      ].includes(file.type)
                     ) {
                       setError(
                         "Erlaubt sind nur PNG, JPG, WEBP oder GIF.",
@@ -814,12 +675,7 @@ function ProfileEditModal({
                       return;
                     }
 
-                    if (
-                      file.size >
-                      5 *
-                        1024 *
-                        1024
-                    ) {
+                    if (file.size > 5 * 1024 * 1024) {
                       setError(
                         "Das Profilbild darf maximal 5 MB groß sein.",
                       );
@@ -827,46 +683,33 @@ function ProfileEditModal({
                     }
 
                     setError("");
-                    setAvatarFile(
-                      file,
-                    );
+                    setAvatarFile(file);
                   }}
                 />
               </label>
 
               {avatarFile && (
                 <p className="muted">
-                  Ausgewählt:{" "}
-                  {avatarFile.name}
+                  Ausgewählt: {avatarFile.name}
                 </p>
               )}
             </div>
           </div>
 
-          <label>
-            Benutzername
-          </label>
+          <label>Benutzername</label>
 
           <input
             value={username}
-            onChange={(e) =>
-              setUsername(
-                e.target.value,
-              )
-            }
+            onChange={(e) => setUsername(e.target.value)}
             required
           />
 
-          <label>
-            Anzeigename
-          </label>
+          <label>Anzeigename</label>
 
           <input
             value={displayName}
             onChange={(e) =>
-              setDisplayName(
-                e.target.value,
-              )
+              setDisplayName(e.target.value)
             }
             required
           />
@@ -875,24 +718,16 @@ function ProfileEditModal({
 
           <textarea
             value={bio}
-            onChange={(e) =>
-              setBio(e.target.value)
-            }
+            onChange={(e) => setBio(e.target.value)}
             placeholder="Erzähl etwas über dich..."
             rows={4}
           />
 
-          <label>
-            Website
-          </label>
+          <label>Website</label>
 
           <input
             value={website}
-            onChange={(e) =>
-              setWebsite(
-                e.target.value,
-              )
-            }
+            onChange={(e) => setWebsite(e.target.value)}
             placeholder="https://..."
           />
 
@@ -917,9 +752,7 @@ function ProfileEditModal({
               className="primary-btn"
               disabled={saving}
             >
-              {saving
-                ? "Speichert..."
-                : "Speichern"}
+              {saving ? "Speichert..." : "Speichern"}
             </button>
           </div>
         </form>
@@ -961,9 +794,7 @@ function Sidebar({
     {
       page: "messages",
       label: "Nachrichten",
-      icon: (
-        <MessageCircle size={20} />
-      ),
+      icon: <MessageCircle size={20} />,
     },
     {
       page: "notifications",
@@ -973,9 +804,7 @@ function Sidebar({
     {
       page: "profile",
       label: "Profil",
-      icon: (
-        <CircleUserRound size={20} />
-      ),
+      icon: <CircleUserRound size={20} />,
     },
     {
       page: "settings",
@@ -987,13 +816,8 @@ function Sidebar({
   return (
     <aside>
       <div className="logo">
-        <div className="logo-mark">
-          C
-        </div>
-
-        <span>
-          CrowSocial
-        </span>
+        <div className="logo-mark">C</div>
+        <span>CrowSocial</span>
       </div>
 
       <nav>
@@ -1001,80 +825,52 @@ function Sidebar({
           <button
             key={item.page}
             className={
-              page === item.page
-                ? "active"
-                : ""
+              page === item.page ? "active" : ""
             }
-            onClick={() =>
-              setPage(item.page)
-            }
+            onClick={() => setPage(item.page)}
             type="button"
           >
             {item.icon}
-            <span>
-              {item.label}
-            </span>
+            <span>{item.label}</span>
           </button>
         ))}
 
         {(profile.role === "ADMIN" ||
           profile.role === "OWNER" ||
-          profile.role ===
-            "MODERATOR") && (
+          profile.role === "MODERATOR") && (
           <button
             className={
-              page === "admin"
-                ? "active"
-                : ""
+              page === "admin" ? "active" : ""
             }
-            onClick={() =>
-              setPage("admin")
-            }
+            onClick={() => setPage("admin")}
             type="button"
           >
             <Shield size={20} />
-            <span>
-              Admin
-            </span>
+            <span>Admin</span>
           </button>
         )}
 
-        {profile.role ===
-          "OWNER" && (
+        {profile.role === "OWNER" && (
           <button
             className={
-              page === "owner"
-                ? "active"
-                : ""
+              page === "owner" ? "active" : ""
             }
-            onClick={() =>
-              setPage("owner")
-            }
+            onClick={() => setPage("owner")}
             type="button"
           >
             <Crown size={20} />
-            <span>
-              Owner
-            </span>
+            <span>Owner</span>
           </button>
         )}
       </nav>
 
       <div className="sidebar-bottom">
         <div className="mini-profile">
-          <Avatar
-            profile={profile}
-            size={38}
-          />
+          <Avatar profile={profile} size={38} />
 
           <div>
-            <strong>
-              {profile.display_name}
-            </strong>
-
-            <span>
-              @{profile.username}
-            </span>
+            <strong>{profile.display_name}</strong>
+            <span>@{profile.username}</span>
           </div>
         </div>
 
@@ -1116,30 +912,18 @@ function HomePage({
     <>
       <div className="page-title">
         <div>
-          <h1>
-            Startseite
-          </h1>
-
-          <p>
-            Was gibt es Neues?
-          </p>
+          <h1>Startseite</h1>
+          <p>Was gibt es Neues?</p>
         </div>
       </div>
 
       <div className="composer">
-        <Avatar
-          profile={profile}
-          size={46}
-        />
+        <Avatar profile={profile} size={46} />
 
         <div className="composer-body">
           <textarea
             value={content}
-            onChange={(e) =>
-              setContent(
-                e.target.value,
-              )
-            }
+            onChange={(e) => setContent(e.target.value)}
             placeholder="Was möchtest du teilen?"
             rows={3}
           />
@@ -1157,14 +941,11 @@ function HomePage({
               className="primary-btn"
               onClick={createPost}
               disabled={
-                loading ||
-                !content.trim()
+                loading || !content.trim()
               }
               type="button"
             >
-              {loading
-                ? "Postet..."
-                : "Posten"}
+              {loading ? "Postet..." : "Posten"}
             </button>
           </div>
         </div>
@@ -1173,13 +954,9 @@ function HomePage({
       <div className="feed">
         {posts.length === 0 ? (
           <div className="empty">
-            <MessageCircle
-              size={38}
-            />
+            <MessageCircle size={38} />
 
-            <h3>
-              Noch keine Beiträge
-            </h3>
+            <h3>Noch keine Beiträge</h3>
 
             <p>
               Sei der Erste und veröffentliche einen Beitrag.
@@ -1190,9 +967,7 @@ function HomePage({
             <PostCard
               key={post.id}
               post={post}
-              currentUserId={
-                profile.id
-              }
+              currentUserId={profile.id}
               onLike={onLike}
             />
           ))
@@ -1207,20 +982,12 @@ function HomePage({
    ========================================================= */
 
 function SearchPage() {
-  const [query, setQuery] =
-    useState("");
-
-  const [results, setResults] =
-    useState<Profile[]>([]);
-
-  const [loading, setLoading] =
-    useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(false);
 
   async function search() {
-    if (
-      !supabase ||
-      !query.trim()
-    ) {
+    if (!supabase || !query.trim()) {
       setResults([]);
       return;
     }
@@ -1228,35 +995,24 @@ function SearchPage() {
     setLoading(true);
 
     try {
-      const value =
-        query
-          .trim()
-          .replace(
-            /[%_]/g,
-            "",
-          );
+      const value = query.trim().replace(/[%_]/g, "");
 
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("profiles")
-        .select(
-          "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
-        )
-        .or(
-          `username.ilike.%${value}%,display_name.ilike.%${value}%`,
-        )
-        .limit(20);
+      const { data, error } =
+        await supabase
+          .from("profiles")
+          .select(
+            "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
+          )
+          .or(
+            `username.ilike.%${value}%,display_name.ilike.%${value}%`,
+          )
+          .limit(20);
 
       if (error) {
         throw error;
       }
 
-      setResults(
-        (data ??
-          []) as Profile[],
-      );
+      setResults((data ?? []) as Profile[]);
     } catch {
       setResults([]);
     } finally {
@@ -1268,13 +1024,8 @@ function SearchPage() {
     <>
       <div className="page-title">
         <div>
-          <h1>
-            Suchen
-          </h1>
-
-          <p>
-            Finde Personen auf CrowSocial.
-          </p>
+          <h1>Suchen</h1>
+          <p>Finde Personen auf CrowSocial.</p>
         </div>
       </div>
 
@@ -1283,15 +1034,9 @@ function SearchPage() {
 
         <input
           value={query}
-          onChange={(e) =>
-            setQuery(
-              e.target.value,
-            )
-          }
+          onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (
-              e.key === "Enter"
-            ) {
+            if (e.key === "Enter") {
               search();
             }
           }}
@@ -1314,53 +1059,35 @@ function SearchPage() {
       )}
 
       <div className="search-results">
-        {results.map(
-          (user) => (
-            <div
-              className="user-card"
-              key={user.id}
-            >
-              <Avatar
-                profile={user}
-                size={50}
-              />
+        {results.map((user) => (
+          <div className="user-card" key={user.id}>
+            <Avatar profile={user} size={50} />
 
-              <div className="user-card-info">
-                <div className="post-name">
-                  <strong>
-                    {
-                      user.display_name
-                    }
-                  </strong>
+            <div className="user-card-info">
+              <div className="post-name">
+                <strong>
+                  {user.display_name}
+                </strong>
 
-                  <BadgeRow
-                    profile={user}
-                  />
-                </div>
-
-                <span>
-                  @{user.username}
-                </span>
-
-                {user.bio && (
-                  <p>
-                    {user.bio}
-                  </p>
-                )}
+                <BadgeRow profile={user} />
               </div>
 
-              <button
-                className="secondary-btn"
-                type="button"
-              >
-                <UserPlus
-                  size={17}
-                />
-                Folgen
-              </button>
+              <span>@{user.username}</span>
+
+              {user.bio && (
+                <p>{user.bio}</p>
+              )}
             </div>
-          ),
-        )}
+
+            <button
+              className="secondary-btn"
+              type="button"
+            >
+              <UserPlus size={17} />
+              Folgen
+            </button>
+          </div>
+        ))}
       </div>
     </>
   );
@@ -1385,13 +1112,9 @@ function SimplePage({
         {icon}
       </div>
 
-      <h1>
-        {title}
-      </h1>
+      <h1>{title}</h1>
 
-      <p>
-        {description}
-      </p>
+      <p>{description}</p>
     </div>
   );
 }
@@ -1413,21 +1136,14 @@ function ProfilePage({
 
       <div className="profile-header">
         <div className="profile-avatar-large">
-          <Avatar
-            profile={profile}
-            size={110}
-          />
+          <Avatar profile={profile} size={110} />
         </div>
 
         <div className="profile-header-main">
           <div className="profile-name-line">
-            <h1>
-              {profile.display_name}
-            </h1>
+            <h1>{profile.display_name}</h1>
 
-            <BadgeRow
-              profile={profile}
-            />
+            <BadgeRow profile={profile} />
           </div>
 
           <p className="profile-username">
@@ -1442,9 +1158,7 @@ function ProfilePage({
 
           {profile.website && (
             <a
-              href={
-                profile.website
-              }
+              href={profile.website}
               target="_blank"
               rel="noreferrer"
               className="profile-website"
@@ -1466,23 +1180,17 @@ function ProfilePage({
       <div className="profile-stats">
         <div>
           <strong>0</strong>
-          <span>
-            Beiträge
-          </span>
+          <span>Beiträge</span>
         </div>
 
         <div>
           <strong>0</strong>
-          <span>
-            Follower
-          </span>
+          <span>Follower</span>
         </div>
 
         <div>
           <strong>0</strong>
-          <span>
-            Folge ich
-          </span>
+          <span>Folge ich</span>
         </div>
       </div>
     </>
@@ -1498,9 +1206,7 @@ function SettingsPage() {
     <>
       <div className="page-title">
         <div>
-          <h1>
-            Einstellungen
-          </h1>
+          <h1>Einstellungen</h1>
 
           <p>
             Verwalte deinen CrowSocial-Account.
@@ -1511,50 +1217,38 @@ function SettingsPage() {
       <div className="settings-list">
         <div className="settings-item">
           <div>
-            <strong>
-              Account
-            </strong>
+            <strong>Account</strong>
 
             <p>
               Deine persönlichen Account-Einstellungen.
             </p>
           </div>
 
-          <ChevronRight
-            size={20}
-          />
+          <ChevronRight size={20} />
         </div>
 
         <div className="settings-item">
           <div>
-            <strong>
-              Datenschutz
-            </strong>
+            <strong>Datenschutz</strong>
 
             <p>
               Verwalte deine Sichtbarkeit und Privatsphäre.
             </p>
           </div>
 
-          <ChevronRight
-            size={20}
-          />
+          <ChevronRight size={20} />
         </div>
 
         <div className="settings-item">
           <div>
-            <strong>
-              Benachrichtigungen
-            </strong>
+            <strong>Benachrichtigungen</strong>
 
             <p>
               Lege fest, wann du Benachrichtigungen erhältst.
             </p>
           </div>
 
-          <ChevronRight
-            size={20}
-          />
+          <ChevronRight size={20} />
         </div>
       </div>
     </>
@@ -1570,17 +1264,13 @@ function AdminPage({
 }: {
   profile: Profile;
 }) {
-  const isOwner =
-    profile.role ===
-    "OWNER";
+  const isOwner = profile.role === "OWNER";
 
   return (
     <>
       <div className="page-title">
         <div>
-          <h1>
-            Admin-Bereich
-          </h1>
+          <h1>Admin-Bereich</h1>
 
           <p>
             Verwaltung von CrowSocial.
@@ -1591,64 +1281,32 @@ function AdminPage({
       <div className="admin-grid">
         <div className="admin-card">
           <Users size={28} />
-
-          <strong>
-            Benutzer
-          </strong>
-
-          <span>
-            Benutzer verwalten
-          </span>
+          <strong>Benutzer</strong>
+          <span>Benutzer verwalten</span>
         </div>
 
         <div className="admin-card">
-          <MessageCircle
-            size={28}
-          />
-
-          <strong>
-            Beiträge
-          </strong>
-
-          <span>
-            Beiträge moderieren
-          </span>
+          <MessageCircle size={28} />
+          <strong>Beiträge</strong>
+          <span>Beiträge moderieren</span>
         </div>
 
         <div className="admin-card">
           <Shield size={28} />
-
-          <strong>
-            Reports
-          </strong>
-
-          <span>
-            Meldungen prüfen
-          </span>
+          <strong>Reports</strong>
+          <span>Meldungen prüfen</span>
         </div>
 
         <div className="admin-card">
-          <CheckCircle2
-            size={28}
-          />
-
-          <strong>
-            Verifizierung
-          </strong>
-
-          <span>
-            Verifizierungsanfragen
-          </span>
+          <CheckCircle2 size={28} />
+          <strong>Verifizierung</strong>
+          <span>Verifizierungsanfragen</span>
         </div>
 
         {isOwner && (
           <div className="admin-card owner-card">
             <Crown size={28} />
-
-            <strong>
-              Owner-Verwaltung
-            </strong>
-
+            <strong>Owner-Verwaltung</strong>
             <span>
               Admins und Moderatoren verwalten
             </span>
@@ -1668,9 +1326,7 @@ function OwnerPage() {
     <>
       <div className="page-title">
         <div>
-          <h1>
-            Owner
-          </h1>
+          <h1>Owner</h1>
 
           <p>
             Vollständige CrowSocial-Verwaltung.
@@ -1684,9 +1340,7 @@ function OwnerPage() {
         </div>
 
         <div>
-          <h2>
-            CrowSocial Owner
-          </h2>
+          <h2>CrowSocial Owner</h2>
 
           <p>
             Du hast Zugriff auf die Owner-Funktionen der Plattform.
@@ -1697,50 +1351,26 @@ function OwnerPage() {
       <div className="admin-grid">
         <div className="admin-card">
           <Users size={28} />
-
-          <strong>
-            Admins
-          </strong>
-
-          <span>
-            Administratoren verwalten
-          </span>
+          <strong>Admins</strong>
+          <span>Administratoren verwalten</span>
         </div>
 
         <div className="admin-card">
           <Shield size={28} />
-
-          <strong>
-            Moderatoren
-          </strong>
-
-          <span>
-            Moderatoren verwalten
-          </span>
+          <strong>Moderatoren</strong>
+          <span>Moderatoren verwalten</span>
         </div>
 
         <div className="admin-card">
           <Settings size={28} />
-
-          <strong>
-            System
-          </strong>
-
-          <span>
-            Plattform-Einstellungen
-          </span>
+          <strong>System</strong>
+          <span>Plattform-Einstellungen</span>
         </div>
 
         <div className="admin-card">
           <Bell size={28} />
-
-          <strong>
-            Logs
-          </strong>
-
-          <span>
-            Admin-Aktionen ansehen
-          </span>
+          <strong>Logs</strong>
+          <span>Admin-Aktionen ansehen</span>
         </div>
       </div>
     </>
@@ -1786,56 +1416,44 @@ function App() {
       return null;
     }
 
-    const {
-      data,
-      error,
-    } = await supabase
-      .from("profiles")
-      .select(
-        "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
-      )
-      .eq("id", userId)
-      .maybeSingle();
+    const { data, error } =
+      await supabase
+        .from("profiles")
+        .select(
+          "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
+        )
+        .eq("id", userId)
+        .maybeSingle();
 
     if (error) {
       console.error(error);
       return null;
     }
 
-    return (
-      (data as Profile | null) ??
-      null
-    );
+    return (data as Profile | null) ?? null;
   }
 
-  async function loadPosts(
-    userId?: string,
-  ) {
+  async function loadPosts(userId?: string) {
     if (!supabase) {
       return;
     }
 
-    const {
-      data,
-      error,
-    } = await supabase
-      .from("posts")
-      .select(
-        `
-        id,
-        user_id,
-        content,
-        image_url,
-        created_at
-      `,
-      )
-      .order(
-        "created_at",
-        {
+    const { data, error } =
+      await supabase
+        .from("posts")
+        .select(
+          `
+          id,
+          user_id,
+          content,
+          image_url,
+          created_at
+        `,
+        )
+        .order("created_at", {
           ascending: false,
-        },
-      )
-      .limit(50);
+        })
+        .limit(50);
 
     if (error) {
       console.error(error);
@@ -1843,74 +1461,54 @@ function App() {
       return;
     }
 
-    const rawPosts =
-      (data ?? []) as Post[];
+    const rawPosts = (data ?? []) as Post[];
 
     const userIds = [
       ...new Set(
         rawPosts.map(
-          (post) =>
-            post.user_id,
+          (post) => post.user_id,
         ),
       ),
     ];
 
-    let profiles: Profile[] =
-      [];
+    let profiles: Profile[] = [];
 
-    if (
-      userIds.length > 0
-    ) {
-      const {
-        data: profileData,
-      } = await supabase
-        .from("profiles")
-        .select(
-          "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
-        )
-        .in(
-          "id",
-          userIds,
-        );
+    if (userIds.length > 0) {
+      const { data: profileData } =
+        await supabase
+          .from("profiles")
+          .select(
+            "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
+          )
+          .in("id", userIds);
 
-      profiles =
-        (profileData ??
-          []) as Profile[];
+      profiles = (profileData ?? []) as Profile[];
     }
 
-    let likedPostIds =
-      new Set<string>();
+    let likedPostIds = new Set<string>();
 
     if (
       userId &&
       rawPosts.length > 0
     ) {
-      const {
-        data: likes,
-      } = await supabase
-        .from("post_likes")
-        .select(
-          "post_id",
-        )
-        .eq(
-          "user_id",
-          userId,
-        )
-        .in(
-          "post_id",
-          rawPosts.map(
-            (post) =>
-              post.id,
-          ),
-        );
+      const { data: likes } =
+        await supabase
+          .from("post_likes")
+          .select("post_id")
+          .eq("user_id", userId)
+          .in(
+            "post_id",
+            rawPosts.map(
+              (post) => post.id,
+            ),
+          );
 
-      likedPostIds =
-        new Set(
-          (likes ?? []).map(
-            (item) =>
-              item.post_id as string,
-          ),
-        );
+      likedPostIds = new Set(
+        (likes ?? []).map(
+          (item) =>
+            item.post_id as string,
+        ),
+      );
     }
 
     const postsWithProfiles =
@@ -1921,56 +1519,35 @@ function App() {
           profiles:
             profiles.find(
               (p) =>
-                p.id ===
-                post.user_id,
+                p.id === post.user_id,
             ) ?? null,
 
           liked:
-            likedPostIds.has(
-              post.id,
-            ),
+            likedPostIds.has(post.id),
         }),
       );
 
-    const postIds =
-      rawPosts.map(
-        (post) =>
-          post.id,
-      );
+    const postIds = rawPosts.map(
+      (post) => post.id,
+    );
 
-    if (
-      postIds.length > 0
-    ) {
-      const {
-        data: likes,
-      } = await supabase
-        .from("post_likes")
-        .select(
-          "post_id",
-        )
-        .in(
-          "post_id",
-          postIds,
-        );
+    if (postIds.length > 0) {
+      const { data: likes } =
+        await supabase
+          .from("post_likes")
+          .select("post_id")
+          .in("post_id", postIds);
 
       const counts =
-        new Map<
-          string,
-          number
-        >();
+        new Map<string, number>();
 
-      for (
-        const like of
-          likes ?? []
-      ) {
+      for (const like of likes ?? []) {
         const postId =
           like.post_id as string;
 
         counts.set(
           postId,
-          (counts.get(
-            postId,
-          ) ?? 0) + 1,
+          (counts.get(postId) ?? 0) + 1,
         );
       }
 
@@ -1978,20 +1555,19 @@ function App() {
         postsWithProfiles.map(
           (post) => ({
             ...post,
-
             likes:
-              counts.get(
-                post.id,
-              ) ?? 0,
+              counts.get(post.id) ?? 0,
           }),
         ),
       );
     } else {
-      setPosts(
-        postsWithProfiles,
-      );
+      setPosts(postsWithProfiles);
     }
   }
+
+  /* =======================================================
+     AUTH INITIALIZATION
+     ======================================================= */
 
   useEffect(() => {
     if (!supabase) {
@@ -2002,9 +1578,7 @@ function App() {
     let mounted = true;
 
     async function init() {
-      const {
-        data,
-      } =
+      const { data } =
         await supabase!.auth.getSession();
 
       if (!mounted) {
@@ -2012,30 +1586,22 @@ function App() {
       }
 
       if (data.session) {
-        setSession(
-          data.session,
-        );
+        setSession(data.session);
 
         const loadedProfile =
           await loadProfile(
-            data.session
-              .user.id,
+            data.session.user.id,
           );
 
         if (!mounted) {
           return;
         }
 
-        setProfile(
-          loadedProfile,
-        );
+        setProfile(loadedProfile);
 
-        if (
-          loadedProfile
-        ) {
+        if (loadedProfile) {
           await loadPosts(
-            data.session
-              .user.id,
+            data.session.user.id,
           );
         }
       }
@@ -2051,39 +1617,28 @@ function App() {
       },
     } =
       supabase.auth.onAuthStateChange(
-        async (
-          _event,
-          newSession,
-        ) => {
+        async (_event, newSession) => {
           if (!mounted) {
             return;
           }
 
-          setSession(
-            newSession,
-          );
+          setSession(newSession);
 
           if (newSession) {
             const loadedProfile =
               await loadProfile(
-                newSession
-                  .user.id,
+                newSession.user.id,
               );
 
             if (!mounted) {
               return;
             }
 
-            setProfile(
-              loadedProfile,
-            );
+            setProfile(loadedProfile);
 
-            if (
-              loadedProfile
-            ) {
+            if (loadedProfile) {
               await loadPosts(
-                newSession
-                  .user.id,
+                newSession.user.id,
               );
             }
           } else {
@@ -2099,6 +1654,10 @@ function App() {
     };
   }, []);
 
+  /* =======================================================
+     CREATE POST
+     ======================================================= */
+
   async function createPost() {
     if (
       !supabase ||
@@ -2111,19 +1670,18 @@ function App() {
     setPosting(true);
 
     try {
-      const {
-        error,
-      } = await supabase
-        .from("posts")
-        .insert({
-          user_id:
-            session.user.id,
+      const { error } =
+        await supabase
+          .from("posts")
+          .insert({
+            user_id:
+              session.user.id,
 
-          content:
-            postContent.trim(),
+            content:
+              postContent.trim(),
 
-          image_url: null,
-        });
+            image_url: null,
+          });
 
       if (error) {
         throw error;
@@ -2147,13 +1705,12 @@ function App() {
     }
   }
 
-  async function toggleLike(
-    post: Post,
-  ) {
-    if (
-      !supabase ||
-      !session
-    ) {
+  /* =======================================================
+     LIKE
+     ======================================================= */
+
+  async function toggleLike(post: Post) {
+    if (!supabase || !session) {
       return;
     }
 
@@ -2162,10 +1719,7 @@ function App() {
         await supabase
           .from("post_likes")
           .delete()
-          .eq(
-            "post_id",
-            post.id,
-          )
+          .eq("post_id", post.id)
           .eq(
             "user_id",
             session.user.id,
@@ -2174,11 +1728,8 @@ function App() {
         await supabase
           .from("post_likes")
           .insert({
-            post_id:
-              post.id,
-
-            user_id:
-              session.user.id,
+            post_id: post.id,
+            user_id: session.user.id,
           });
       }
 
@@ -2189,6 +1740,10 @@ function App() {
       console.error(err);
     }
   }
+
+  /* =======================================================
+     LOGOUT
+     ======================================================= */
 
   async function logout() {
     if (!supabase) {
@@ -2203,23 +1758,17 @@ function App() {
   }
 
   /* =======================================================
-     LOADING / AUTH GUARDS
+     GUARDS
      ======================================================= */
 
   if (loading) {
     return (
       <div className="loading-screen">
-        <div className="loading-logo">
-          C
-        </div>
+        <div className="loading-logo">C</div>
 
-        <strong>
-          CrowSocial
-        </strong>
+        <strong>CrowSocial</strong>
 
-        <span>
-          Wird geladen...
-        </span>
+        <span>Wird geladen...</span>
       </div>
     );
   }
@@ -2227,9 +1776,7 @@ function App() {
   if (!supabase) {
     return (
       <div className="loading-screen">
-        <h1>
-          CrowSocial
-        </h1>
+        <h1>CrowSocial</h1>
 
         <p>
           Supabase ist nicht konfiguriert.
@@ -2246,60 +1793,37 @@ function App() {
     );
   }
 
-  /*
-   * WICHTIG:
-   * Ab hier ist profile garantiert vorhanden.
-   * Durch die neue Konstante erkennt TypeScript
-   * den Typ sicher als Profile.
-   */
-  const currentProfile: Profile =
-    profile;
+  const currentProfile: Profile = profile;
+  const currentSession: Session = session;
 
-  const currentSession: Session =
-    session;
+  /* =======================================================
+     PAGE RENDER
+     ======================================================= */
 
   function renderPage() {
     switch (page) {
       case "home":
         return (
           <HomePage
-            profile={
-              currentProfile
-            }
+            profile={currentProfile}
             posts={posts}
-            content={
-              postContent
-            }
-            setContent={
-              setPostContent
-            }
-            createPost={
-              createPost
-            }
-            loading={
-              posting
-            }
-            onLike={
-              toggleLike
-            }
+            content={postContent}
+            setContent={setPostContent}
+            createPost={createPost}
+            loading={posting}
+            onLike={toggleLike}
           />
         );
 
       case "search":
-        return (
-          <SearchPage />
-        );
+        return <SearchPage />;
 
       case "messages":
         return (
           <SimplePage
             title="Nachrichten"
             description="Deine privaten Nachrichten werden hier angezeigt."
-            icon={
-              <MessageCircle
-                size={38}
-              />
-            }
+            icon={<MessageCircle size={38} />}
           />
         );
 
@@ -2308,117 +1832,87 @@ function App() {
           <SimplePage
             title="Benachrichtigungen"
             description="Hier siehst du Likes, Follows und andere Benachrichtigungen."
-            icon={
-              <Bell
-                size={38}
-              />
-            }
+            icon={<Bell size={38} />}
           />
         );
 
       case "profile":
         return (
           <ProfilePage
-            profile={
-              currentProfile
-            }
+            profile={currentProfile}
             onEdit={() =>
-              setEditProfile(
-                true,
-              )
+              setEditProfile(true)
             }
           />
         );
 
       case "settings":
-        return (
-          <SettingsPage />
-        );
+        return <SettingsPage />;
 
       case "admin":
         return (
           <AdminPage
-            profile={
-              currentProfile
-            }
+            profile={currentProfile}
           />
         );
 
       case "owner":
-        return (
-          <OwnerPage />
-        );
+        return <OwnerPage />;
 
       default:
         return null;
     }
   }
 
+  /* =======================================================
+     MAIN LAYOUT
+     ======================================================= */
+
   return (
     <div className="app">
+      {/* MOBILE MENU */}
       {mobileMenu && (
         <div
           className="mobile-overlay"
           onClick={() =>
-            setMobileMenu(
-              false,
-            )
+            setMobileMenu(false)
           }
         />
       )}
 
       <div
         className={`mobile-sidebar ${
-          mobileMenu
-            ? "open"
-            : ""
+          mobileMenu ? "open" : ""
         }`}
       >
         <Sidebar
           page={page}
-          setPage={(
-            newPage,
-          ) => {
-            setPage(
-              newPage,
-            );
-
-            setMobileMenu(
-              false,
-            );
+          setPage={(newPage) => {
+            setPage(newPage);
+            setMobileMenu(false);
           }}
-          profile={
-            currentProfile
-          }
-          logout={
-            logout
-          }
+          profile={currentProfile}
+          logout={logout}
         />
       </div>
 
+      {/* DESKTOP SIDEBAR */}
       <div className="desktop-sidebar">
         <Sidebar
           page={page}
-          setPage={
-            setPage
-          }
-          profile={
-            currentProfile
-          }
-          logout={
-            logout
-          }
+          setPage={setPage}
+          profile={currentProfile}
+          logout={logout}
         />
       </div>
 
+      {/* MAIN CONTENT */}
       <main>
         <header className="mobile-header">
           <button
             className="icon-btn"
             onClick={() =>
-              setMobileMenu(
-                true,
-              )
+              setMobileMenu(true)
             }
             type="button"
           >
@@ -2426,19 +1920,13 @@ function App() {
           </button>
 
           <div className="mobile-brand">
-            <div className="logo-mark">
-              C
-            </div>
+            <div className="logo-mark">C</div>
 
-            <strong>
-              CrowSocial
-            </strong>
+            <strong>CrowSocial</strong>
           </div>
 
           <Avatar
-            profile={
-              currentProfile
-            }
+            profile={currentProfile}
             size={34}
           />
         </header>
@@ -2448,22 +1936,15 @@ function App() {
         </div>
       </main>
 
+      {/* PROFILE MODAL */}
       {editProfile && (
         <ProfileEditModal
-          profile={
-            currentProfile
-          }
+          profile={currentProfile}
           onClose={() =>
-            setEditProfile(
-              false,
-            )
+            setEditProfile(false)
           }
-          onSaved={(
-            newProfile,
-          ) => {
-            setProfile(
-              newProfile,
-            );
+          onSaved={(newProfile) => {
+            setProfile(newProfile);
           }}
         />
       )}
@@ -2471,10 +1952,11 @@ function App() {
   );
 }
 
-const root =
-  document.getElementById(
-    "root",
-  );
+/* =========================================================
+   ROOT
+   ========================================================= */
+
+const root = document.getElementById("root");
 
 if (!root) {
   throw new Error(
