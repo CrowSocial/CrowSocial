@@ -455,22 +455,6 @@ if (!data.user) {
   throw new Error("Benutzer konnte nicht erstellt werden.");
 }
 
-const { error: profileError } = await supabase
-  .from("profiles")
-  .insert({
-    id: data.user.id,
-    username: username,
-    display_name: username,
-    bio: "",
-    avatar_url: null,
-    role: "USER",
-    verified: false,
-    suspended: false,
-  });
-
-if (profileError) {
-  throw profileError;
-}
 
         if (error) {
           throw error;
