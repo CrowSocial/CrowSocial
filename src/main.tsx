@@ -15,17 +15,19 @@ import {
   MessageCircle,
   MoreHorizontal,
   Search,
-  Send,
   Settings,
   Shield,
   UserPlus,
   Users,
   X,
+  Lock,
+  User,
+  Save,
 } from "lucide-react";
 import {
   createClient,
   type Session,
-  type User,
+  type User as SupabaseUser,
 } from "@supabase/supabase-js";
 import "./styles.css";
 
@@ -144,9 +146,15 @@ function Avatar({
         className="avatar"
         src={profile.avatar_url}
         alt={profile.display_name || profile.username}
+        width={size}
+        height={size}
         style={{
-          width: size,
-          height: size,
+          width: `${size}px`,
+          height: `${size}px`,
+          minWidth: `${size}px`,
+          minHeight: `${size}px`,
+          maxWidth: `${size}px`,
+          maxHeight: `${size}px`,
         }}
       />
     );
@@ -156,8 +164,10 @@ function Avatar({
     <div
       className="avatar avatar-placeholder"
       style={{
-        width: size,
-        height: size,
+        width: `${size}px`,
+        height: `${size}px`,
+        minWidth: `${size}px`,
+        minHeight: `${size}px`,
       }}
     >
       <CircleUserRound size={size * 0.55} />
@@ -253,10 +263,11 @@ function AuthScreen({
 
     try {
       if (mode === "login") {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { data, error } =
+          await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
 
         if (error) throw error;
 
@@ -320,6 +331,7 @@ function AuthScreen({
       <div className="auth-card">
         <div className="brand-large">
           <div className="brand-icon">🐦</div>
+
           <div>
             <strong>CrowSocial</strong>
             <span>Schule · Freunde · Unterhaltung</span>
@@ -427,12 +439,39 @@ function ProfileEditModal({
   const [bio, setBio] = useState(profile.bio || "");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState<string | null>(
+    profile.avatar_url || null
+  );
 
-  const preview = avatarFile
-    ? URL.createObjectURL(avatarFile)
-    : profile.avatar_url;
+  useEffect(() => {
+    if (!avatarFile) {
+      setPreview(profile.avatar_url || null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(avatarFile);
+    setPreview(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [avatarFile, profile.avatar_url]);
 
   const save = async () => {
+    const cleanUsername = username.trim();
+    const cleanDisplayName = displayName.trim();
+    const cleanBio = bio.trim();
+
+    if (!cleanUsername) {
+      alert("Bitte gib einen Benutzernamen ein.");
+      return;
+    }
+
+    if (!cleanDisplayName) {
+      alert("Bitte gib einen Anzeigenamen ein.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -443,16 +482,21 @@ function ProfileEditModal({
           avatarFile.name.split(".").pop()?.toLowerCase() ||
           "jpg";
 
-        const path = `${profile.id}/${crypto.randomUUID()}.${extension}`;
+        const path =
+          `${profile.id}/${crypto.randomUUID()}.${extension}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(path, avatarFile, {
-            upsert: false,
-            contentType: avatarFile.type,
-          });
+        const { error: uploadError } =
+          await supabase.storage
+            .from("avatars")
+            .upload(path, avatarFile, {
+              upsert: false,
+              contentType: avatarFile.type,
+              cacheControl: "3600",
+            });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          throw uploadError;
+        }
 
         const { data } = supabase.storage
           .from("avatars")
@@ -464,24 +508,29 @@ function ProfileEditModal({
       const { data, error } = await supabase
         .from("profiles")
         .update({
-          username: username.trim(),
-          display_name:
-            displayName.trim() || username.trim(),
-          bio: bio.trim(),
+          username: cleanUsername,
+          display_name: cleanDisplayName,
+          bio: cleanBio || null,
           avatar_url: avatarUrl,
         })
         .eq("id", profile.id)
-        .select()
+        .select("*")
         .single();
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       onSaved(data as Profile);
       onClose();
+
+      alert("Profil erfolgreich gespeichert.");
     } catch (err) {
+      console.error("Profil speichern:", err);
+
       alert(
         err instanceof Error
-          ? err.message
+          ? `Profil konnte nicht gespeichert werden:\n\n${err.message}`
           : "Profil konnte nicht gespeichert werden."
       );
     } finally {
@@ -505,18 +554,47 @@ function ProfileEditModal({
         </div>
 
         <div className="profile-preview">
-          <img
-            className="avatar"
-            src={
-              preview ||
-              "https://placehold.co/100x100/png?text=C"
-            }
-            alt="Profil"
-          />
+          <div
+            style={{
+              width: 110,
+              height: 110,
+              minWidth: 110,
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "4px solid #27272a",
+              background: "#18181b",
+            }}
+          >
+            {preview ? (
+              <img
+                src={preview}
+                alt="Profilbild Vorschau"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <CircleUserRound size={55} />
+              </div>
+            )}
+          </div>
         </div>
 
         <label className="file-input-label">
           Profilbild auswählen
+
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
@@ -527,6 +605,7 @@ function ProfileEditModal({
 
               if (file.size > 5 * 1024 * 1024) {
                 alert("Das Bild darf maximal 5 MB groß sein.");
+                e.target.value = "";
                 return;
               }
 
@@ -539,12 +618,14 @@ function ProfileEditModal({
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="Benutzername"
+          maxLength={30}
         />
 
         <input
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="Anzeigename"
+          maxLength={50}
         />
 
         <textarea
@@ -552,6 +633,7 @@ function ProfileEditModal({
           onChange={(e) => setBio(e.target.value)}
           placeholder="Beschreibung"
           rows={4}
+          maxLength={250}
         />
 
         <button
@@ -560,7 +642,99 @@ function ProfileEditModal({
           onClick={save}
           disabled={saving}
         >
-          {saving ? "Speichern..." : "Speichern"}
+          <Save size={18} />
+          {saving ? "Speichern..." : "Änderungen speichern"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PasswordModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [repeatPassword, setRepeatPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const changePassword = async () => {
+    if (password.length < 6) {
+      alert("Das Passwort muss mindestens 6 Zeichen haben.");
+      return;
+    }
+
+    if (password !== repeatPassword) {
+      alert("Die Passwörter stimmen nicht überein.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      alert("Passwort erfolgreich geändert.");
+      onClose();
+    } catch (err) {
+      alert(
+        err instanceof Error
+          ? err.message
+          : "Passwort konnte nicht geändert werden."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <div className="modal-header">
+          <h2>Passwort ändern</h2>
+
+          <button
+            className="icon-button"
+            onClick={onClose}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <p className="muted">
+          Gib dein neues Passwort ein.
+        </p>
+
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Neues Passwort"
+          minLength={6}
+        />
+
+        <input
+          type="password"
+          value={repeatPassword}
+          onChange={(e) => setRepeatPassword(e.target.value)}
+          placeholder="Passwort wiederholen"
+          minLength={6}
+        />
+
+        <button
+          className="primary-button"
+          onClick={changePassword}
+          disabled={saving}
+        >
+          <Lock size={18} />
+          {saving ? "Speichern..." : "Passwort ändern"}
         </button>
       </div>
     </div>
@@ -705,8 +879,17 @@ function HomePage({
 }) {
   const imagePreview = useMemo(() => {
     if (!postImageFile) return null;
+
     return URL.createObjectURL(postImageFile);
   }, [postImageFile]);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
 
   return (
     <main className="feed">
@@ -731,13 +914,15 @@ function HomePage({
 
         {imagePreview && (
           <div className="post-image-preview">
-            <img src={imagePreview} alt="Bildvorschau" />
+            <img
+              src={imagePreview}
+              alt="Bildvorschau"
+            />
 
             <button
               type="button"
               className="remove-image"
               onClick={() => setPostImageFile(null)}
-              title="Bild entfernen"
             >
               <X size={18} />
             </button>
@@ -748,6 +933,7 @@ function HomePage({
           <label className="image-upload-button">
             <ImageIcon size={19} />
             Bild
+
             <input
               type="file"
               hidden
@@ -783,8 +969,12 @@ function HomePage({
         {posts.length === 0 ? (
           <div className="empty-card">
             <Users size={34} />
+
             <h3>Noch keine Beiträge</h3>
-            <p>Sei der Erste und veröffentliche einen Beitrag.</p>
+
+            <p>
+              Sei der Erste und veröffentliche einen Beitrag.
+            </p>
           </div>
         ) : (
           posts.map((post) => (
@@ -807,22 +997,32 @@ function SearchPage() {
 
   useEffect(() => {
     const search = async () => {
-      if (!query.trim()) {
+      const cleanQuery = query.trim();
+
+      if (!cleanQuery) {
         setProfiles([]);
         return;
       }
 
       setLoading(true);
 
-      const { data } = await supabase
+      const safeQuery = cleanQuery.replace(/[%_]/g, "");
+
+      const { data, error } = await supabase
         .from("profiles")
         .select("*")
         .or(
-          `username.ilike.%${query}%,display_name.ilike.%${query}%`
+          `username.ilike.%${safeQuery}%,display_name.ilike.%${safeQuery}%`
         )
         .limit(20);
 
-      setProfiles((data || []) as Profile[]);
+      if (!error) {
+        setProfiles((data || []) as Profile[]);
+      } else {
+        console.error(error);
+        setProfiles([]);
+      }
+
       setLoading(false);
     };
 
@@ -839,6 +1039,7 @@ function SearchPage() {
 
       <div className="search-box">
         <Search size={20} />
+
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -846,7 +1047,11 @@ function SearchPage() {
         />
       </div>
 
-      {loading && <div className="empty-card">Suche...</div>}
+      {loading && (
+        <div className="empty-card">
+          Suche...
+        </div>
+      )}
 
       {!loading &&
         profiles.map((profile) => (
@@ -858,6 +1063,7 @@ function SearchPage() {
                 <strong>{profile.display_name}</strong>
                 <BadgeRow profile={profile} />
               </div>
+
               <span>@{profile.username}</span>
             </div>
 
@@ -917,7 +1123,9 @@ function ProfilePage({
 
             <span>@{profile.username}</span>
 
-            {profile.bio && <p>{profile.bio}</p>}
+            {profile.bio && (
+              <p>{profile.bio}</p>
+            )}
           </div>
 
           <button
@@ -932,29 +1140,106 @@ function ProfilePage({
   );
 }
 
-function SettingsPage() {
+function SettingsPage({
+  profile,
+  onEditProfile,
+  onPassword,
+  onLogout,
+}: {
+  profile: Profile;
+  onEditProfile: () => void;
+  onPassword: () => void;
+  onLogout: () => void;
+}) {
   return (
     <main className="feed">
       <div className="page-title">
-        <h1>Einstellungen</h1>
+        <div>
+          <h1>Einstellungen</h1>
+          <p>Verwalte dein CrowSocial-Konto.</p>
+        </div>
+
+        <Settings size={30} />
+      </div>
+
+      <div className="settings-card">
+        <div>
+          <strong>Profil bearbeiten</strong>
+          <span>
+            Name, Benutzername, Beschreibung und Profilbild
+          </span>
+        </div>
+
+        <button
+          className="icon-button"
+          onClick={onEditProfile}
+          title="Profil bearbeiten"
+        >
+          <ChevronRight size={20} />
+        </button>
+      </div>
+
+      <div className="settings-card">
+        <div>
+          <strong>Passwort ändern</strong>
+          <span>
+            Neues Passwort für dein Konto festlegen
+          </span>
+        </div>
+
+        <button
+          className="icon-button"
+          onClick={onPassword}
+          title="Passwort ändern"
+        >
+          <Lock size={20} />
+        </button>
       </div>
 
       <div className="settings-card">
         <div>
           <strong>Konto</strong>
-          <span>Deine CrowSocial-Kontoeinstellungen</span>
+          <span>
+            Angemeldet als @{profile.username}
+          </span>
         </div>
 
-        <ChevronRight size={20} />
+        <User size={20} />
       </div>
 
       <div className="settings-card">
         <div>
-          <strong>Datenschutz</strong>
-          <span>Privatsphäre und Sicherheit</span>
+          <strong>Rolle</strong>
+          <span>
+            {profile.role}
+          </span>
         </div>
 
-        <ChevronRight size={20} />
+        {profile.role === "OWNER" ? (
+          <Crown size={20} />
+        ) : profile.role === "ADMIN" ||
+          profile.role === "MODERATOR" ? (
+          <Shield size={20} />
+        ) : (
+          <User size={20} />
+        )}
+      </div>
+
+      <div className="settings-card">
+        <div>
+          <strong>Abmelden</strong>
+          <span>
+            Von deinem CrowSocial-Konto abmelden
+          </span>
+        </div>
+
+        <button
+          className="icon-button"
+          onClick={onLogout}
+          title="Abmelden"
+        >
+          <LogOut size={20} />
+        </button>
       </div>
     </main>
   );
@@ -999,7 +1284,8 @@ function AdminPage({ profile }: { profile: Profile }) {
       </div>
 
       <div className="info-card">
-        Angemeldet als <strong>@{profile.username}</strong>
+        Angemeldet als{" "}
+        <strong>@{profile.username}</strong>
       </div>
     </main>
   );
@@ -1053,21 +1339,37 @@ function OwnerPage({ profile }: { profile: Profile }) {
 }
 
 function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] =
+    useState<Session | null>(null);
 
-  const [page, setPage] = useState<Page>("home");
-  const [mobileMenu, setMobileMenu] = useState(false);
+  const [profile, setProfile] =
+    useState<Profile | null>(null);
 
-  const [editProfile, setEditProfile] = useState(false);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [postContent, setPostContent] = useState("");
+  const [page, setPage] =
+    useState<Page>("home");
+
+  const [mobileMenu, setMobileMenu] =
+    useState(false);
+
+  const [editProfile, setEditProfile] =
+    useState(false);
+
+  const [passwordModal, setPasswordModal] =
+    useState(false);
+
+  const [posts, setPosts] =
+    useState<Post[]>([]);
+
+  const [postContent, setPostContent] =
+    useState("");
+
   const [postImageFile, setPostImageFile] =
     useState<File | null>(null);
 
-  const loadProfile = async (user: User) => {
+  const loadProfile = async (user: SupabaseUser) => {
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
@@ -1131,20 +1433,27 @@ function App() {
           created_at
         )
       `)
-      .order("created_at", { ascending: false })
+      .order("created_at", {
+        ascending: false,
+      })
       .limit(100);
 
     if (error) {
-      console.error("Posts konnten nicht geladen werden:", error);
+      console.error(
+        "Posts konnten nicht geladen werden:",
+        error
+      );
       return;
     }
 
-    const postList = (data || []).map((post: any) => ({
-      ...post,
-      profiles: getProfileObject(post.profiles),
-      like_count: 0,
-      liked: false,
-    })) as Post[];
+    const postList = (data || []).map(
+      (post: any) => ({
+        ...post,
+        profiles: getProfileObject(post.profiles),
+        like_count: 0,
+        liked: false,
+      })
+    ) as Post[];
 
     setPosts(postList);
   };
@@ -1287,16 +1596,22 @@ function App() {
 
     try {
       if (liked) {
-        await supabase
+        const { error } = await supabase
           .from("post_likes")
           .delete()
           .eq("post_id", postId)
           .eq("user_id", session.user.id);
+
+        if (error) throw error;
       } else {
-        await supabase.from("post_likes").insert({
-          post_id: postId,
-          user_id: session.user.id,
-        });
+        const { error } = await supabase
+          .from("post_likes")
+          .insert({
+            post_id: postId,
+            user_id: session.user.id,
+          });
+
+        if (error) throw error;
       }
 
       setPosts((current) =>
@@ -1315,15 +1630,18 @@ function App() {
         )
       );
     } catch (error) {
-      console.error(error);
+      console.error("Like Fehler:", error);
     }
   };
 
   const logout = async () => {
     await supabase.auth.signOut();
+
     setSession(null);
     setProfile(null);
+    setPosts([]);
     setPage("home");
+    setMobileMenu(false);
   };
 
   if (loading) {
@@ -1333,6 +1651,7 @@ function App() {
           <div className="brand-icon">🐦</div>
           <strong>CrowSocial</strong>
         </div>
+
         <span>Laden...</span>
       </div>
     );
@@ -1342,8 +1661,8 @@ function App() {
     return <AuthScreen onLogin={setSession} />;
   }
 
-  const currentProfile: Profile = profile;
-  const currentSession: Session = session;
+  const currentProfile = profile;
+  const currentSession = session;
 
   return (
     <div className="app">
@@ -1357,7 +1676,10 @@ function App() {
 
         <strong>CrowSocial</strong>
 
-        <Avatar profile={currentProfile} size={34} />
+        <Avatar
+          profile={currentProfile}
+          size={34}
+        />
       </header>
 
       <div
@@ -1383,7 +1705,9 @@ function App() {
             setPage={setPage}
             profile={currentProfile}
             logout={logout}
-            closeMobile={() => setMobileMenu(false)}
+            closeMobile={() =>
+              setMobileMenu(false)
+            }
           />
         </div>
       </div>
@@ -1411,7 +1735,9 @@ function App() {
           />
         )}
 
-        {page === "search" && <SearchPage />}
+        {page === "search" && (
+          <SearchPage />
+        )}
 
         {page === "messages" && (
           <SimplePage
@@ -1432,36 +1758,65 @@ function App() {
         {page === "profile" && (
           <ProfilePage
             profile={currentProfile}
-            onEdit={() => setEditProfile(true)}
+            onEdit={() =>
+              setEditProfile(true)
+            }
           />
         )}
 
-        {page === "settings" && <SettingsPage />}
+        {page === "settings" && (
+          <SettingsPage
+            profile={currentProfile}
+            onEditProfile={() =>
+              setEditProfile(true)
+            }
+            onPassword={() =>
+              setPasswordModal(true)
+            }
+            onLogout={logout}
+          />
+        )}
 
         {page === "admin" && (
-          <AdminPage profile={currentProfile} />
+          <AdminPage
+            profile={currentProfile}
+          />
         )}
 
         {page === "owner" &&
           currentProfile.role === "OWNER" && (
-            <OwnerPage profile={currentProfile} />
+            <OwnerPage
+              profile={currentProfile}
+            />
           )}
       </div>
 
       {editProfile && (
         <ProfileEditModal
           profile={currentProfile}
-          onClose={() => setEditProfile(false)}
+          onClose={() =>
+            setEditProfile(false)
+          }
           onSaved={(updated) => {
             setProfile(updated);
           }}
+        />
+      )}
+
+      {passwordModal && (
+        <PasswordModal
+          onClose={() =>
+            setPasswordModal(false)
+          }
         />
       )}
     </div>
   );
 }
 
-createRoot(document.getElementById("root")!).render(
+createRoot(
+  document.getElementById("root")!
+).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
