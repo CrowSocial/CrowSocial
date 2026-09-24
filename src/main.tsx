@@ -15,21 +15,30 @@ import {
   MessageCircle,
   MoreHorizontal,
   Search,
+  Send,
   Settings,
   Shield,
   UserPlus,
   Users,
   X,
 } from "lucide-react";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type Session } from "@supabase/supabase-js";
 import "./styles.css";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
 
 type Role = "USER" | "MODERATOR" | "ADMIN" | "OWNER";
 
 type Profile = {
   id: string;
-  username: string | null;
-  display_name: string | null;
+  username: string;
+  display_name: string;
   avatar_url: string | null;
   bio: string | null;
   website: string | null;
@@ -40,57 +49,53 @@ type Profile = {
 
 type Post = {
   id: string;
+  user_id: string;
   content: string;
   image_url: string | null;
   created_at: string;
-  author_id: string;
-  likes_count: number;
-  comments_count: number;
-  author?: Profile | null;
+  profiles?: Profile | Profile[] | null;
+  likes?: number;
+  liked?: boolean;
 };
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as
-  | string
-  | undefined;
+type Page =
+  | "home"
+  | "search"
+  | "messages"
+  | "notifications"
+  | "profile"
+  | "settings"
+  | "admin"
+  | "owner";
 
-const supabase: SupabaseClient | null =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null;
-
-function BadgeRow({ profile }: { profile?: Profile | null }) {
+function getProfileObject(
+  profile: Profile | Profile[] | null | undefined,
+): Profile | null {
   if (!profile) return null;
+  return Array.isArray(profile) ? profile[0] ?? null : profile;
+}
 
+function BadgeRow({ profile }: { profile: Profile }) {
   return (
-    <span className="badges">
+    <span className="badge-row">
       {profile.verified && (
-        <CheckCircle2
-          className="blue"
-          size={16}
-          strokeWidth={2.5}
-          aria-label="Verifiziert"
-        />
+        <span className="verified-badge" title="Verifiziert">
+          <CheckCircle2 size={15} />
+        </span>
       )}
 
       {(profile.role === "ADMIN" ||
         profile.role === "MODERATOR" ||
         profile.role === "OWNER") && (
-        <Shield
-          className="shield"
-          size={16}
-          strokeWidth={2.5}
-          aria-label="Admin"
-        />
+        <span className="admin-badge" title="Team">
+          <Shield size={14} />
+        </span>
       )}
 
       {profile.role === "OWNER" && (
-        <Crown
-          className="owner"
-          size={16}
-          strokeWidth={2.5}
-          aria-label="Owner"
-        />
+        <span className="owner-badge" title="Owner">
+          <Crown size={14} />
+        </span>
       )}
     </span>
   );
@@ -98,26 +103,22 @@ function BadgeRow({ profile }: { profile?: Profile | null }) {
 
 function Avatar({
   profile,
-  size = 38,
+  size = 42,
 }: {
-  profile?: Profile | null;
+  profile: Profile;
   size?: number;
 }) {
-  const name =
-    profile?.display_name ||
-    profile?.username ||
-    "C";
-
-  if (profile?.avatar_url) {
+  if (profile.avatar_url) {
     return (
       <img
-        src={profile.avatar_url}
-        alt={name}
         className="avatar"
+        src={profile.avatar_url}
+        alt={profile.display_name}
         style={{
           width: size,
           height: size,
           objectFit: "cover",
+          borderRadius: "50%",
         }}
       />
     );
@@ -125,26 +126,26 @@ function Avatar({
 
   return (
     <div
-      className="avatar"
+      className="avatar avatar-fallback"
       style={{
         width: size,
         height: size,
       }}
-      aria-label={name}
     >
-      {name.charAt(0).toUpperCase()}
+      {(
+        profile.display_name?.charAt(0) ||
+        profile.username?.charAt(0) ||
+        "C"
+      ).toUpperCase()}
     </div>
   );
 }
 
 function formatDate(date: string) {
-  const value = new Date(date);
-
-  if (Number.isNaN(value.getTime())) return "";
-
-  return value.toLocaleString("de-DE", {
+  return new Date(date).toLocaleString("de-DE", {
     day: "2-digit",
     month: "2-digit",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -153,123 +154,68 @@ function formatDate(date: string) {
 function PostCard({
   post,
   currentUserId,
+  onLike,
 }: {
   post: Post;
-  currentUserId: string | null;
+  currentUserId?: string;
+  onLike: (post: Post) => void;
 }) {
-  const [liked, setLiked] = useState(false);
-  const [likes, setLikes] = useState(post.likes_count ?? 0);
+  const profile = getProfileObject(post.profiles);
 
-  const author = post.author;
-
-  const likePost = async () => {
-    if (!supabase || !currentUserId) {
-      setLiked((value) => !value);
-      setLikes((value) =>
-        liked ? Math.max(0, value - 1) : value + 1
-      );
-      return;
-    }
-
-    if (liked) {
-      const { error } = await supabase
-        .from("post_likes")
-        .delete()
-        .eq("post_id", post.id)
-        .eq("user_id", currentUserId);
-
-      if (!error) {
-        setLiked(false);
-        setLikes((value) => Math.max(0, value - 1));
-      }
-
-      return;
-    }
-
-    const { error } = await supabase
-      .from("post_likes")
-      .insert({
-        post_id: post.id,
-        user_id: currentUserId,
-      });
-
-    if (!error) {
-      setLiked(true);
-      setLikes((value) => value + 1);
-    }
-  };
+  if (!profile) return null;
 
   return (
     <article className="post">
-      <div className="posthead">
-        <Avatar profile={author} />
+      <div className="post-head">
+        <Avatar profile={profile} size={46} />
 
-        <div className="who">
-          <strong>
-            {author?.display_name ||
-              author?.username ||
-              "Unbekannt"}
+        <div className="post-author">
+          <div className="post-name">
+            <strong>{profile.display_name}</strong>
+            <BadgeRow profile={profile} />
+          </div>
 
-            <BadgeRow profile={author} />
-          </strong>
-
-          <span>
-            @{author?.username || "user"} ·{" "}
-            {formatDate(post.created_at)}
-          </span>
+          <div className="post-username">
+            @{profile.username} · {formatDate(post.created_at)}
+          </div>
         </div>
 
-        <button className="more" aria-label="Mehr">
+        <button className="icon-btn">
           <MoreHorizontal size={20} />
         </button>
       </div>
 
-      <div
-        className="content"
-        style={{ marginTop: 14 }}
-      >
-        {post.content}
-      </div>
+      {post.content && <p className="post-content">{post.content}</p>}
 
       {post.image_url && (
         <img
+          className="post-image"
           src={post.image_url}
-          alt=""
-          style={{
-            width: "100%",
-            borderRadius: 14,
-            marginTop: 14,
-            display: "block",
-            maxHeight: 600,
-            objectFit: "cover",
-          }}
+          alt="Beitrag"
         />
       )}
 
-      <div
-        className="postactions"
-        style={{ marginTop: 14 }}
-      >
+      <div className="post-actions">
         <button
-          className={liked ? "liked" : ""}
-          onClick={likePost}
-          type="button"
+          className={`post-action ${post.liked ? "liked" : ""}`}
+          onClick={() => onLike(post)}
+          disabled={!currentUserId}
         >
           <Heart
-            size={18}
-            fill={liked ? "currentColor" : "none"}
+            size={19}
+            fill={post.liked ? "currentColor" : "none"}
           />
-          {likes}
+          <span>{post.likes ?? 0}</span>
         </button>
 
-        <button type="button">
-          <MessageCircle size={18} />
-          {post.comments_count ?? 0}
+        <button className="post-action">
+          <MessageCircle size={19} />
+          <span>Kommentieren</span>
         </button>
 
-        <button type="button">
-          <UserPlus size={18} />
-          Folgen
+        <button className="post-action">
+          <Send size={18} />
+          <span>Teilen</span>
         </button>
       </div>
     </article>
@@ -279,20 +225,19 @@ function PostCard({
 function AuthScreen({
   onLogin,
 }: {
-  onLogin: (profile: Profile) => void;
+  onLogin: (session: Session) => void;
 }) {
-  const [mode, setMode] =
-    useState<"login" | "register">("login");
-
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
 
     if (!supabase) {
       setError("Supabase ist nicht konfiguriert.");
@@ -301,198 +246,143 @@ function AuthScreen({
 
     setLoading(true);
     setError("");
+    setMessage("");
 
     try {
       if (mode === "login") {
-        const { data, error: loginError } =
-          await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-        if (loginError) {
-          setError(loginError.message);
-          return;
-        }
+        if (error) throw error;
 
-        if (data.user) {
-          await loadProfile(
-            data.user.id,
-            onLogin
-          );
+        if (data.session) {
+          onLogin(data.session);
         }
       } else {
-        const { data, error: registerError } =
-          await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: {
-                username,
-                display_name:
-                  displayName || username,
-              },
-            },
-          });
-
-        if (registerError) {
-          setError(registerError.message);
-          return;
+        if (!username.trim()) {
+          throw new Error("Bitte gib einen Benutzernamen ein.");
         }
 
-        if (data.user) {
-          await loadProfile(
-            data.user.id,
-            onLogin
-          );
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              username: username.trim().toLowerCase(),
+              display_name: displayName.trim() || username.trim(),
+            },
+          },
+        });
 
-          if (!data.session) {
-            setError(
-              "Registrierung erstellt. Prüfe deine E-Mail, falls E-Mail-Bestätigung aktiviert ist."
-            );
-          }
+        if (error) throw error;
+
+        if (data.session) {
+          onLogin(data.session);
+        } else {
+          setMessage(
+            "Registrierung erfolgreich. Falls eine E-Mail-Bestätigung aktiviert ist, prüfe dein Postfach.",
+          );
         }
       }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Ein Fehler ist aufgetreten.",
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
     <div className="auth">
-      <div className="brand">
-        CROW<span>Social</span>
-      </div>
-
       <div className="authcard">
-        <h1>
-          {mode === "login"
-            ? "Willkommen zurück"
-            : "Account erstellen"}
-        </h1>
+        <div className="brand">
+          <div className="brand-icon">C</div>
+          <div>
+            <h1>CrowSocial</h1>
+            <p>Dein soziales Netzwerk</p>
+          </div>
+        </div>
 
-        <p>
-          {mode === "login"
-            ? "Melde dich bei CrowSocial an."
-            : "Erstelle deinen CrowSocial-Account."}
-        </p>
+        <div className="auth-tabs">
+          <button
+            className={mode === "login" ? "active" : ""}
+            onClick={() => setMode("login")}
+            type="button"
+          >
+            Anmelden
+          </button>
+
+          <button
+            className={mode === "register" ? "active" : ""}
+            onClick={() => setMode("register")}
+            type="button"
+          >
+            Registrieren
+          </button>
+        </div>
 
         <form onSubmit={submit}>
           {mode === "register" && (
             <>
+              <label>Benutzername</label>
               <input
                 value={username}
-                onChange={(e) =>
-                  setUsername(e.target.value)
-                }
-                placeholder="Username"
-                required
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="z. B. crowit"
+                autoComplete="username"
               />
 
+              <label>Anzeigename</label>
               <input
                 value={displayName}
-                onChange={(e) =>
-                  setDisplayName(e.target.value)
-                }
-                placeholder="Anzeigename"
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Dein Name"
               />
             </>
           )}
 
+          <label>E-Mail</label>
           <input
             type="email"
             value={email}
-            onChange={(e) =>
-              setEmail(e.target.value)
-            }
-            placeholder="E-Mail"
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="deine@email.de"
             autoComplete="email"
-            required
           />
 
+          <label>Passwort</label>
           <input
             type="password"
             value={password}
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
+            onChange={(e) => setPassword(e.target.value)}
             placeholder="Passwort"
             autoComplete={
-              mode === "login"
-                ? "current-password"
-                : "new-password"
+              mode === "login" ? "current-password" : "new-password"
             }
-            required
           />
 
-          {error && (
-            <div className="error">
-              {error}
-            </div>
-          )}
+          {error && <div className="error-box">{error}</div>}
+          {message && <div className="success-box">{message}</div>}
 
-          <button
-            className="primary"
-            disabled={loading}
-            type="submit"
-          >
+          <button className="primary-btn" disabled={loading}>
             {loading
               ? "Bitte warten..."
               : mode === "login"
-              ? "Anmelden"
-              : "Registrieren"}
-
-            <LogIn size={18} />
+                ? (
+                  <>
+                    <LogIn size={18} />
+                    Anmelden
+                  </>
+                )
+                : "Account erstellen"}
           </button>
         </form>
-
-        <button
-          className="link"
-          type="button"
-          onClick={() => {
-            setMode((value) =>
-              value === "login"
-                ? "register"
-                : "login"
-            );
-
-            setError("");
-          }}
-        >
-          {mode === "login"
-            ? "Noch keinen Account? Registrieren"
-            : "Du hast bereits einen Account? Anmelden"}
-        </button>
       </div>
     </div>
   );
-}
-
-async function loadProfile(
-  userId: string,
-  callback: (profile: Profile) => void
-) {
-  if (!supabase) return;
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(
-      "id, username, display_name, avatar_url, bio, website, role, verified, suspended"
-    )
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    console.error(
-      "Profil konnte nicht geladen werden:",
-      error
-    );
-    return;
-  }
-
-  if (data) {
-    callback(data as Profile);
-  }
 }
 
 function ProfileEditModal({
@@ -504,361 +394,829 @@ function ProfileEditModal({
   onClose: () => void;
   onSaved: (profile: Profile) => void;
 }) {
-  const [username, setUsername] = useState(
-    profile.username || ""
-  );
-
-  const [displayName, setDisplayName] =
-    useState(profile.display_name || "");
-
-  const [bio, setBio] = useState(
-    profile.bio || ""
-  );
-
-  const [website, setWebsite] = useState(
-    profile.website || ""
-  );
-
-  const [avatarUrl, setAvatarUrl] =
-    useState(profile.avatar_url || "");
-
+  const [username, setUsername] = useState(profile.username);
+  const [displayName, setDisplayName] = useState(profile.display_name);
+  const [bio, setBio] = useState(profile.bio ?? "");
+  const [website, setWebsite] = useState(profile.website ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? "");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
-  const saveProfile = async () => {
+  const previewUrl = useMemo(() => {
+    if (!avatarFile) return avatarUrl || null;
+    return URL.createObjectURL(avatarFile);
+  }, [avatarFile, avatarUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarFile && previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [avatarFile, previewUrl]);
+
+  async function uploadAvatar() {
+    if (!supabase || !avatarFile) {
+      return avatarUrl.trim() || null;
+    }
+
+    if (!avatarFile.type.startsWith("image/")) {
+      throw new Error("Bitte wähle eine Bilddatei aus.");
+    }
+
+    if (avatarFile.size > 5 * 1024 * 1024) {
+      throw new Error("Das Profilbild darf maximal 5 MB groß sein.");
+    }
+
+    const extension =
+      avatarFile.name.split(".").pop()?.toLowerCase() || "jpg";
+
+    const filePath =
+      `${profile.id}/${crypto.randomUUID()}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(filePath, avatarFile, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: avatarFile.type,
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage
+      .from("avatars")
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  }
+
+  async function saveProfile(e: React.FormEvent) {
+    e.preventDefault();
+
     if (!supabase) {
       setError("Supabase ist nicht konfiguriert.");
       return;
     }
 
-    if (!username.trim()) {
-      setError("Der Username darf nicht leer sein.");
-      return;
-    }
-
     setSaving(true);
     setError("");
-    setSuccess("");
 
-    const updated = {
-      username: username.trim(),
-      display_name:
-        displayName.trim() || username.trim(),
-      bio: bio.trim(),
-      website: website.trim(),
-      avatar_url: avatarUrl.trim() || null,
-    };
+    try {
+      let finalAvatarUrl = avatarUrl.trim() || null;
 
-    const { data, error: updateError } =
-      await supabase
+      if (avatarFile) {
+        finalAvatarUrl = await uploadAvatar();
+      }
+
+      const { data, error: updateError } = await supabase
         .from("profiles")
-        .update(updated)
+        .update({
+          username: username.trim().toLowerCase(),
+          display_name: displayName.trim(),
+          bio: bio.trim(),
+          website: website.trim(),
+          avatar_url: finalAvatarUrl,
+        })
         .eq("id", profile.id)
         .select(
-          "id, username, display_name, avatar_url, bio, website, role, verified, suspended"
+          "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
         )
         .single();
 
-    if (updateError) {
-      console.error(
-        "Profil konnte nicht gespeichert werden:",
-        updateError
-      );
+      if (updateError) throw updateError;
 
-      setError(
-        updateError.message ||
-          "Profil konnte nicht gespeichert werden."
-      );
-
-      setSaving(false);
-      return;
-    }
-
-    setSuccess("Profil erfolgreich gespeichert.");
-
-    onSaved(data as Profile);
-
-    setTimeout(() => {
+      onSaved(data as Profile);
       onClose();
-    }, 500);
-
-    setSaving(false);
-  };
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Profil konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100,
-        background: "rgba(0,0,0,.72)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-      }}
-    >
-      <div
-        className="panel"
-        onClick={(event) =>
-          event.stopPropagation()
-        }
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 20,
-          }}
-        >
-          <div>
-            <h2 style={{ margin: 0 }}>
-              Profil bearbeiten
-            </h2>
+    <div className="modal-backdrop">
+      <div className="modal">
+        <div className="modal-head">
+          <h2>Profil bearbeiten</h2>
 
-            <p
-              className="muted"
-              style={{ marginBottom: 0 }}
-            >
-              Deine Änderungen werden online gespeichert.
-            </p>
-          </div>
-
-          <button
-            className="secondary"
-            type="button"
-            onClick={onClose}
-          >
-            <X size={18} />
+          <button className="icon-btn" onClick={onClose} type="button">
+            <X size={20} />
           </button>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            marginBottom: 20,
-          }}
-        >
-          <Avatar
-            profile={{
-              ...profile,
-              username,
-              display_name:
-                displayName || username,
-              avatar_url:
-                avatarUrl || null,
-            }}
-            size={100}
+        <form onSubmit={saveProfile}>
+          <div className="avatar-upload">
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt="Profilbild Vorschau"
+                className="profile-preview"
+              />
+            ) : (
+              <div className="profile-preview profile-preview-empty">
+                <CircleUserRound size={45} />
+              </div>
+            )}
+
+            <div>
+              <strong>Profilbild</strong>
+              <p className="muted">
+                PNG, JPG, WEBP oder GIF · maximal 5 MB
+              </p>
+
+              <label className="secondary-btn file-btn">
+                <ImageIcon size={17} />
+                Bild auswählen
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  hidden
+                  onChange={(e) => {
+                    setAvatarFile(e.target.files?.[0] ?? null);
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          <label>Benutzername</label>
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
           />
-        </div>
 
-        <label
-          style={{
-            display: "block",
-            marginBottom: 6,
-            fontWeight: 600,
-          }}
-        >
-          Username
-        </label>
+          <label>Anzeigename</label>
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            required
+          />
 
-        <input
-          value={username}
-          onChange={(e) =>
-            setUsername(e.target.value)
-          }
-          placeholder="Username"
-          maxLength={30}
-          style={{
-            width: "100%",
-            marginBottom: 14,
-          }}
-        />
+          <label>Bio</label>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            placeholder="Erzähl etwas über dich..."
+            rows={4}
+          />
 
-        <label
-          style={{
-            display: "block",
-            marginBottom: 6,
-            fontWeight: 600,
-          }}
-        >
-          Anzeigename
-        </label>
+          <label>Website</label>
+          <input
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            placeholder="https://..."
+          />
 
-        <input
-          value={displayName}
-          onChange={(e) =>
-            setDisplayName(e.target.value)
-          }
-          placeholder="Anzeigename"
-          maxLength={50}
-          style={{
-            width: "100%",
-            marginBottom: 14,
-          }}
-        />
+          {error && <div className="error-box">{error}</div>}
 
-        <label
-          style={{
-            display: "block",
-            marginBottom: 6,
-            fontWeight: 600,
-          }}
-        >
-          Bio
-        </label>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Abbrechen
+            </button>
 
-        <textarea
-          value={bio}
-          onChange={(e) =>
-            setBio(e.target.value)
-          }
-          placeholder="Erzähl etwas über dich..."
-          maxLength={160}
-          style={{
-            width: "100%",
-            minHeight: 100,
-            marginBottom: 14,
-            resize: "vertical",
-          }}
-        />
-
-        <label
-          style={{
-            display: "block",
-            marginBottom: 6,
-            fontWeight: 600,
-          }}
-        >
-          Website
-        </label>
-
-        <input
-          value={website}
-          onChange={(e) =>
-            setWebsite(e.target.value)
-          }
-          placeholder="https://..."
-          maxLength={200}
-          style={{
-            width: "100%",
-            marginBottom: 14,
-          }}
-        />
-
-        <label
-          style={{
-            display: "block",
-            marginBottom: 6,
-            fontWeight: 600,
-          }}
-        >
-          Profilbild-URL
-        </label>
-
-        <input
-          value={avatarUrl}
-          onChange={(e) =>
-            setAvatarUrl(e.target.value)
-          }
-          placeholder="https://..."
-          maxLength={1000}
-          style={{
-            width: "100%",
-            marginBottom: 16,
-          }}
-        />
-
-        {error && (
-          <div
-            className="error"
-            style={{ marginBottom: 12 }}
-          >
-            {error}
+            <button className="primary-btn" disabled={saving}>
+              {saving ? "Speichert..." : "Speichern"}
+            </button>
           </div>
-        )}
-
-        {success && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(34,197,94,.12)",
-              color: "#4ade80",
-            }}
-          >
-            {success}
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            justifyContent: "flex-end",
-          }}
-        >
-          <button
-            className="secondary"
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-          >
-            Abbrechen
-          </button>
-
-          <button
-            className="primary"
-            type="button"
-            onClick={saveProfile}
-            disabled={saving}
-          >
-            {saving
-              ? "Speichern..."
-              : "Änderungen speichern"}
-          </button>
-        </div>
+        </form>
       </div>
     </div>
   );
 }
 
-function App() {
-  const [sessionUserId, setSessionUserId] =
-    useState<string | null>(null);
+function Sidebar({
+  page,
+  setPage,
+  profile,
+  logout,
+}: {
+  page: Page;
+  setPage: (page: Page) => void;
+  profile: Profile;
+  logout: () => void;
+}) {
+  const items: {
+    page: Page;
+    label: string;
+    icon: React.ReactNode;
+  }[] = [
+    {
+      page: "home",
+      label: "Startseite",
+      icon: <Home size={20} />,
+    },
+    {
+      page: "search",
+      label: "Suchen",
+      icon: <Search size={20} />,
+    },
+    {
+      page: "messages",
+      label: "Nachrichten",
+      icon: <MessageCircle size={20} />,
+    },
+    {
+      page: "notifications",
+      label: "Benachrichtigungen",
+      icon: <Bell size={20} />,
+    },
+    {
+      page: "profile",
+      label: "Profil",
+      icon: <CircleUserRound size={20} />,
+    },
+    {
+      page: "settings",
+      label: "Einstellungen",
+      icon: <Settings size={20} />,
+    },
+  ];
 
-  const [profile, setProfile] =
-    useState<Profile | null>(null);
+  return (
+    <aside>
+      <div className="logo">
+        <div className="logo-mark">C</div>
+        <span>CrowSocial</span>
+      </div>
+
+      <nav>
+        {items.map((item) => (
+          <button
+            key={item.page}
+            className={page === item.page ? "active" : ""}
+            onClick={() => setPage(item.page)}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        ))}
+
+        {(profile.role === "ADMIN" ||
+          profile.role === "OWNER" ||
+          profile.role === "MODERATOR") && (
+          <button
+            className={page === "admin" ? "active" : ""}
+            onClick={() => setPage("admin")}
+          >
+            <Shield size={20} />
+            <span>Admin</span>
+          </button>
+        )}
+
+        {profile.role === "OWNER" && (
+          <button
+            className={page === "owner" ? "active" : ""}
+            onClick={() => setPage("owner")}
+          >
+            <Crown size={20} />
+            <span>Owner</span>
+          </button>
+        )}
+      </nav>
+
+      <div className="sidebar-bottom">
+        <div className="mini-profile">
+          <Avatar profile={profile} size={38} />
+
+          <div>
+            <strong>{profile.display_name}</strong>
+            <span>@{profile.username}</span>
+          </div>
+        </div>
+
+        <button className="logout-btn" onClick={logout}>
+          <LogOut size={18} />
+          Abmelden
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function HomePage({
+  profile,
+  posts,
+  content,
+  setContent,
+  createPost,
+  loading,
+  onLike,
+}: {
+  profile: Profile;
+  posts: Post[];
+  content: string;
+  setContent: (value: string) => void;
+  createPost: () => void;
+  loading: boolean;
+  onLike: (post: Post) => void;
+}) {
+  return (
+    <>
+      <div className="page-title">
+        <div>
+          <h1>Startseite</h1>
+          <p>Was gibt es Neues?</p>
+        </div>
+      </div>
+
+      <div className="composer">
+        <Avatar profile={profile} size={46} />
+
+        <div className="composer-body">
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Was möchtest du teilen?"
+            rows={3}
+          />
+
+          <div className="composer-bottom">
+            <button className="secondary-btn">
+              <ImageIcon size={18} />
+              Bild
+            </button>
+
+            <button
+              className="primary-btn"
+              onClick={createPost}
+              disabled={loading || !content.trim()}
+            >
+              {loading ? "Postet..." : "Posten"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="feed">
+        {posts.length === 0 ? (
+          <div className="empty">
+            <MessageCircle size={38} />
+            <h3>Noch keine Beiträge</h3>
+            <p>Sei der Erste und veröffentliche einen Beitrag.</p>
+          </div>
+        ) : (
+          posts.map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              currentUserId={profile.id}
+              onLike={onLike}
+            />
+          ))
+        )}
+      </div>
+    </>
+  );
+}
+
+function SearchPage() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function search() {
+    if (!supabase || !query.trim()) {
+      setResults([]);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const value = query.trim().replace(/[%_]/g, "");
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
+        )
+        .or(`username.ilike.%${value}%,display_name.ilike.%${value}%`)
+        .limit(20);
+
+      if (error) throw error;
+
+      setResults((data ?? []) as Profile[]);
+    } catch {
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="page-title">
+        <div>
+          <h1>Suchen</h1>
+          <p>Finde Personen auf CrowSocial.</p>
+        </div>
+      </div>
+
+      <div className="search-box">
+        <Search size={20} />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") search();
+          }}
+          placeholder="Benutzername oder Name..."
+        />
+
+        <button className="primary-btn" onClick={search}>
+          Suchen
+        </button>
+      </div>
+
+      {loading && <div className="loading">Suche läuft...</div>}
+
+      <div className="search-results">
+        {results.map((user) => (
+          <div className="user-card" key={user.id}>
+            <Avatar profile={user} size={50} />
+
+            <div className="user-card-info">
+              <div className="post-name">
+                <strong>{user.display_name}</strong>
+                <BadgeRow profile={user} />
+              </div>
+
+              <span>@{user.username}</span>
+
+              {user.bio && <p>{user.bio}</p>}
+            </div>
+
+            <button className="secondary-btn">
+              <UserPlus size={17} />
+              Folgen
+            </button>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function SimplePage({
+  title,
+  description,
+  icon,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="placeholder-page">
+      <div className="placeholder-icon">{icon}</div>
+      <h1>{title}</h1>
+      <p>{description}</p>
+    </div>
+  );
+}
+
+function ProfilePage({
+  profile,
+  onEdit,
+}: {
+  profile: Profile;
+  onEdit: () => void;
+}) {
+  return (
+    <>
+      <div className="profile-cover" />
+
+      <div className="profile-header">
+        <div className="profile-avatar-large">
+          <Avatar profile={profile} size={110} />
+        </div>
+
+        <div className="profile-header-main">
+          <div className="profile-name-line">
+            <h1>{profile.display_name}</h1>
+            <BadgeRow profile={profile} />
+          </div>
+
+          <p className="profile-username">@{profile.username}</p>
+
+          {profile.bio && <p className="profile-bio">{profile.bio}</p>}
+
+          {profile.website && (
+            <a
+              href={profile.website}
+              target="_blank"
+              rel="noreferrer"
+              className="profile-website"
+            >
+              {profile.website}
+            </a>
+          )}
+        </div>
+
+        <button className="secondary-btn" onClick={onEdit}>
+          Profil bearbeiten
+        </button>
+      </div>
+
+      <div className="profile-stats">
+        <div>
+          <strong>0</strong>
+          <span>Beiträge</span>
+        </div>
+
+        <div>
+          <strong>0</strong>
+          <span>Follower</span>
+        </div>
+
+        <div>
+          <strong>0</strong>
+          <span>Folge ich</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SettingsPage() {
+  return (
+    <>
+      <div className="page-title">
+        <div>
+          <h1>Einstellungen</h1>
+          <p>Verwalte deinen CrowSocial-Account.</p>
+        </div>
+      </div>
+
+      <div className="settings-list">
+        <div className="settings-item">
+          <div>
+            <strong>Account</strong>
+            <p>Deine persönlichen Account-Einstellungen.</p>
+          </div>
+
+          <ChevronRight size={20} />
+        </div>
+
+        <div className="settings-item">
+          <div>
+            <strong>Datenschutz</strong>
+            <p>Verwalte deine Sichtbarkeit und Privatsphäre.</p>
+          </div>
+
+          <ChevronRight size={20} />
+        </div>
+
+        <div className="settings-item">
+          <div>
+            <strong>Benachrichtigungen</strong>
+            <p>Lege fest, wann du Benachrichtigungen erhältst.</p>
+          </div>
+
+          <ChevronRight size={20} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function AdminPage({ profile }: { profile: Profile }) {
+  const isOwner = profile.role === "OWNER";
+
+  return (
+    <>
+      <div className="page-title">
+        <div>
+          <h1>Admin-Bereich</h1>
+          <p>Verwaltung von CrowSocial.</p>
+        </div>
+      </div>
+
+      <div className="admin-grid">
+        <div className="admin-card">
+          <Users size={28} />
+          <strong>Benutzer</strong>
+          <span>Benutzer verwalten</span>
+        </div>
+
+        <div className="admin-card">
+          <MessageCircle size={28} />
+          <strong>Beiträge</strong>
+          <span>Beiträge moderieren</span>
+        </div>
+
+        <div className="admin-card">
+          <Shield size={28} />
+          <strong>Reports</strong>
+          <span>Meldungen prüfen</span>
+        </div>
+
+        <div className="admin-card">
+          <CheckCircle2 size={28} />
+          <strong>Verifizierung</strong>
+          <span>Verifizierungsanfragen</span>
+        </div>
+
+        {isOwner && (
+          <div className="admin-card owner-card">
+            <Crown size={28} />
+            <strong>Owner-Verwaltung</strong>
+            <span>Admins und Moderatoren verwalten</span>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function OwnerPage() {
+  return (
+    <>
+      <div className="page-title">
+        <div>
+          <h1>Owner</h1>
+          <p>Vollständige CrowSocial-Verwaltung.</p>
+        </div>
+      </div>
+
+      <div className="owner-banner">
+        <div className="owner-icon">
+          <Crown size={32} />
+        </div>
+
+        <div>
+          <h2>CrowSocial Owner</h2>
+          <p>
+            Du hast Zugriff auf die Owner-Funktionen der Plattform.
+          </p>
+        </div>
+      </div>
+
+      <div className="admin-grid">
+        <div className="admin-card">
+          <Users size={28} />
+          <strong>Admins</strong>
+          <span>Administratoren verwalten</span>
+        </div>
+
+        <div className="admin-card">
+          <Shield size={28} />
+          <strong>Moderatoren</strong>
+          <span>Moderatoren verwalten</span>
+        </div>
+
+        <div className="admin-card">
+          <Settings size={28} />
+          <strong>System</strong>
+          <span>Plattform-Einstellungen</span>
+        </div>
+
+        <div className="admin-card">
+          <Bell size={28} />
+          <strong>Logs</strong>
+          <span>Admin-Aktionen ansehen</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState<Page>("home");
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [editProfile, setEditProfile] = useState(false);
 
   const [posts, setPosts] = useState<Post[]>([]);
-  const [page, setPage] = useState("home");
-  const [loading, setLoading] = useState(true);
-  const [composer, setComposer] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [mobileMenu, setMobileMenu] =
-    useState(false);
+  const [postContent, setPostContent] = useState("");
+  const [posting, setPosting] = useState(false);
 
-  const [editingProfile, setEditingProfile] =
-    useState(false);
+  async function loadProfile(userId: string) {
+    if (!supabase) return null;
 
-  const isAdmin =
-    profile?.role === "ADMIN" ||
-    profile?.role === "MODERATOR" ||
-    profile?.role === "OWNER";
+    const { data, error } = await supabase
+      .from("profiles")
+      .select(
+        "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
+      )
+      .eq("id", userId)
+      .maybeSingle();
 
-  const isOwner =
-    profile?.role === "OWNER";
+    if (error) {
+      console.error(error);
+      return null;
+    }
+
+    return (data as Profile | null) ?? null;
+  }
+
+  async function loadPosts(userId?: string) {
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+      .from("posts")
+      .select(
+        `
+        id,
+        user_id,
+        content,
+        image_url,
+        created_at
+      `,
+      )
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error(error);
+      setPosts([]);
+      return;
+    }
+
+    const rawPosts = (data ?? []) as Post[];
+
+    const userIds = [...new Set(rawPosts.map((post) => post.user_id))];
+
+    let profiles: Profile[] = [];
+
+    if (userIds.length > 0) {
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select(
+          "id, username, display_name, avatar_url, bio, website, role, verified, suspended",
+        )
+        .in("id", userIds);
+
+      profiles = (profileData ?? []) as Profile[];
+    }
+
+    let likedPostIds = new Set<string>();
+
+    if (userId && rawPosts.length > 0) {
+      const { data: likes } = await supabase
+        .from("post_likes")
+        .select("post_id")
+        .eq("user_id", userId)
+        .in(
+          "post_id",
+          rawPosts.map((post) => post.id),
+        );
+
+      likedPostIds = new Set(
+        (likes ?? []).map((item) => item.post_id as string),
+      );
+    }
+
+    const postsWithProfiles = rawPosts.map((post) => ({
+      ...post,
+      profiles: profiles.find((p) => p.id === post.user_id) ?? null,
+      liked: likedPostIds.has(post.id),
+    }));
+
+    const postIds = rawPosts.map((post) => post.id);
+
+    if (postIds.length > 0) {
+      const { data: likes } = await supabase
+        .from("post_likes")
+        .select("post_id")
+        .in("post_id", postIds);
+
+      const counts = new Map<string, number>();
+
+      for (const like of likes ?? []) {
+        counts.set(
+          like.post_id as string,
+          (counts.get(like.post_id as string) ?? 0) + 1,
+        );
+      }
+
+      setPosts(
+        postsWithProfiles.map((post) => ({
+          ...post,
+          likes: counts.get(post.id) ?? 0,
+        })),
+      );
+    } else {
+      setPosts(postsWithProfiles);
+    }
+  }
 
   useEffect(() => {
     if (!supabase) {
@@ -868,57 +1226,52 @@ function App() {
 
     let mounted = true;
 
-    const init = async () => {
-      const { data } =
-        await supabase.auth.getSession();
+    async function init() {
+      const { data } = await supabase!.auth.getSession();
 
       if (!mounted) return;
 
-      if (data.session?.user) {
-        setSessionUserId(
-          data.session.user.id
-        );
+      if (data.session) {
+        setSession(data.session);
 
-        await loadProfile(
-          data.session.user.id,
-          (loadedProfile) => {
-            if (mounted) {
-              setProfile(loadedProfile);
-            }
-          }
-        );
+        const loadedProfile = await loadProfile(data.session.user.id);
+
+        if (!mounted) return;
+
+        setProfile(loadedProfile);
+
+        if (loadedProfile) {
+          await loadPosts(data.session.user.id);
+        }
       }
 
       setLoading(false);
-    };
+    }
 
     init();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      if (!mounted) return;
+
+      setSession(newSession);
+
+      if (newSession) {
+        const loadedProfile = await loadProfile(newSession.user.id);
+
         if (!mounted) return;
 
-        if (session?.user) {
-          setSessionUserId(
-            session.user.id
-          );
+        setProfile(loadedProfile);
 
-          await loadProfile(
-            session.user.id,
-            (loadedProfile) => {
-              if (mounted) {
-                setProfile(loadedProfile);
-              }
-            }
-          );
-        } else {
-          setSessionUserId(null);
-          setProfile(null);
+        if (loadedProfile) {
+          await loadPosts(newSession.user.id);
         }
+      } else {
+        setProfile(null);
+        setPosts([]);
       }
-    );
+    });
 
     return () => {
       mounted = false;
@@ -926,1122 +1279,220 @@ function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (sessionUserId) {
-      loadPosts();
-    }
-  }, [sessionUserId]);
+  async function createPost() {
+    if (!supabase || !session || !postContent.trim()) return;
 
-  const loadPosts = async () => {
-    if (!supabase) return;
+    setPosting(true);
 
-    setLoading(true);
+    try {
+      const { error } = await supabase.from("posts").insert({
+        user_id: session.user.id,
+        content: postContent.trim(),
+        image_url: null,
+      });
 
-    const { data: postData, error: postError } =
-      await supabase
-        .from("posts")
-        .select(
-          "id, content, image_url, created_at, author_id, likes_count, comments_count"
-        )
-        .order("created_at", {
-          ascending: false,
-        });
+      if (error) throw error;
 
-    if (postError) {
-      console.error(
-        "Posts konnten nicht geladen werden:",
-        postError
+      setPostContent("");
+      await loadPosts(session.user.id);
+    } catch (err) {
+      console.error(err);
+      alert(
+        err instanceof Error
+          ? err.message
+          : "Beitrag konnte nicht erstellt werden.",
       );
-
-      setPosts([]);
-      setLoading(false);
-      return;
+    } finally {
+      setPosting(false);
     }
+  }
 
-    const rows =
-      (postData ?? []) as Post[];
+  async function toggleLike(post: Post) {
+    if (!supabase || !session) return;
 
-    const authorIds = [
-      ...new Set(
-        rows
-          .map((post) => post.author_id)
-          .filter(
-            (id): id is string =>
-              Boolean(id)
-          )
-      ),
-    ];
-
-    let profiles: Profile[] = [];
-
-    if (authorIds.length > 0) {
-      const {
-        data: profileData,
-        error: profileError,
-      } = await supabase
-        .from("profiles")
-        .select(
-          "id, username, display_name, avatar_url, bio, website, role, verified, suspended"
-        )
-        .in("id", authorIds);
-
-      if (profileError) {
-        console.error(
-          "Autorenprofile konnten nicht geladen werden:",
-          profileError
-        );
+    try {
+      if (post.liked) {
+        await supabase
+          .from("post_likes")
+          .delete()
+          .eq("post_id", post.id)
+          .eq("user_id", session.user.id);
       } else {
-        profiles =
-          (profileData ?? []) as Profile[];
-      }
-    }
-
-    const profileMap = new Map(
-      profiles.map((item) => [
-        item.id,
-        item,
-      ])
-    );
-
-    const combinedPosts =
-      rows.map((post) => ({
-        ...post,
-        author:
-          profileMap.get(
-            post.author_id
-          ) ?? null,
-      }));
-
-    setPosts(combinedPosts);
-    setLoading(false);
-  };
-
-  const createPost = async () => {
-    const content =
-      composer.trim();
-
-    if (
-      !content ||
-      !supabase ||
-      !sessionUserId
-    ) {
-      return;
-    }
-
-    const { error } =
-      await supabase
-        .from("posts")
-        .insert({
-          author_id: sessionUserId,
-          content,
+        await supabase.from("post_likes").insert({
+          post_id: post.id,
+          user_id: session.user.id,
         });
+      }
 
-    if (error) {
-      console.error(
-        "Post konnte nicht erstellt werden:",
-        error
-      );
-      return;
+      await loadPosts(session.user.id);
+    } catch (err) {
+      console.error(err);
     }
+  }
 
-    setComposer("");
-    await loadPosts();
-  };
-
-  const logout = async () => {
+  async function logout() {
     if (!supabase) return;
 
     await supabase.auth.signOut();
-
+    setSession(null);
     setProfile(null);
-    setSessionUserId(null);
-  };
+    setPosts([]);
+  }
 
-  const filteredPosts =
-    useMemo(() => {
-      const query =
-        searchTerm
-          .trim()
-          .toLowerCase();
-
-      if (!query) return posts;
-
-      return posts.filter(
-        (post) => {
-          const content =
-            post.content.toLowerCase();
-
-          const username =
-            post.author?.username?.toLowerCase() ??
-            "";
-
-          const displayName =
-            post.author?.display_name?.toLowerCase() ??
-            "";
-
-          return (
-            content.includes(query) ||
-            username.includes(query) ||
-            displayName.includes(query)
-          );
-        }
-      );
-    }, [posts, searchTerm]);
-
-  if (loading && !profile) {
+  if (loading) {
     return (
-      <div className="auth">
-        <div className="brand">
-          CROW<span>Social</span>
-        </div>
-
-        <div className="authcard">
-          <h1>CrowSocial</h1>
-          <p>Wird geladen...</p>
-        </div>
+      <div className="loading-screen">
+        <div className="loading-logo">C</div>
+        <strong>CrowSocial</strong>
+        <span>Wird geladen...</span>
       </div>
     );
   }
 
-  if (!profile) {
+  if (!supabase) {
     return (
-      <AuthScreen
-        onLogin={(loadedProfile) => {
-          setProfile(
-            loadedProfile
-          );
-
-          setSessionUserId(
-            loadedProfile.id
-          );
-        }}
-      />
+      <div className="loading-screen">
+        <h1>CrowSocial</h1>
+        <p>Supabase ist nicht konfiguriert.</p>
+      </div>
     );
   }
 
-  const displayName =
-    profile.display_name ||
-    profile.username ||
-    "Crowit";
+  if (!session || !profile) {
+    return <AuthScreen onLogin={setSession} />;
+  }
+
+  function renderPage() {
+    switch (page) {
+      case "home":
+        return (
+          <HomePage
+            profile={profile}
+            posts={posts}
+            content={postContent}
+            setContent={setPostContent}
+            createPost={createPost}
+            loading={posting}
+            onLike={toggleLike}
+          />
+        );
+
+      case "search":
+        return <SearchPage />;
+
+      case "messages":
+        return (
+          <SimplePage
+            title="Nachrichten"
+            description="Deine privaten Nachrichten werden hier angezeigt."
+            icon={<MessageCircle size={38} />}
+          />
+        );
+
+      case "notifications":
+        return (
+          <SimplePage
+            title="Benachrichtigungen"
+            description="Hier siehst du Likes, Follows und andere Benachrichtigungen."
+            icon={<Bell size={38} />}
+          />
+        );
+
+      case "profile":
+        return (
+          <ProfilePage
+            profile={profile}
+            onEdit={() => setEditProfile(true)}
+          />
+        );
+
+      case "settings":
+        return <SettingsPage />;
+
+      case "admin":
+        return <AdminPage profile={profile} />;
+
+      case "owner":
+        return <OwnerPage />;
+
+      default:
+        return null;
+    }
+  }
 
   return (
     <div className="app">
-      <aside>
-        <div className="logo">
-          CROW<span>Social</span>
-        </div>
+      {mobileMenu && (
+        <div
+          className="mobile-overlay"
+          onClick={() => setMobileMenu(false)}
+        />
+      )}
 
-        <nav>
-          <button
-            className={
-              page === "home"
-                ? "active"
-                : ""
-            }
-            onClick={() =>
-              setPage("home")
-            }
-            type="button"
-          >
-            <Home size={20} />
-            <span>Startseite</span>
-          </button>
+      <div className={`mobile-sidebar ${mobileMenu ? "open" : ""}`}>
+        <Sidebar
+          page={page}
+          setPage={(newPage) => {
+            setPage(newPage);
+            setMobileMenu(false);
+          }}
+          profile={profile}
+          logout={logout}
+        />
+      </div>
 
-          <button
-            className={
-              page === "search"
-                ? "active"
-                : ""
-            }
-            onClick={() =>
-              setPage("search")
-            }
-            type="button"
-          >
-            <Search size={20} />
-            <span>Suche</span>
-          </button>
-
-          <button
-            className={
-              page === "messages"
-                ? "active"
-                : ""
-            }
-            onClick={() =>
-              setPage("messages")
-            }
-            type="button"
-          >
-            <MessageCircle
-              size={20}
-            />
-            <span>Nachrichten</span>
-          </button>
-
-          <button
-            className={
-              page === "notifications"
-                ? "active"
-                : ""
-            }
-            onClick={() =>
-              setPage(
-                "notifications"
-              )
-            }
-            type="button"
-          >
-            <Bell size={20} />
-            <span>
-              Benachrichtigungen
-            </span>
-          </button>
-
-          <button
-            className={
-              page === "profile"
-                ? "active"
-                : ""
-            }
-            onClick={() =>
-              setPage("profile")
-            }
-            type="button"
-          >
-            <CircleUserRound
-              size={20}
-            />
-            <span>Profil</span>
-          </button>
-
-          <button
-            className={
-              page === "settings"
-                ? "active"
-                : ""
-            }
-            onClick={() =>
-              setPage("settings")
-            }
-            type="button"
-          >
-            <Settings size={20} />
-            <span>
-              Einstellungen
-            </span>
-          </button>
-
-          {isAdmin && (
-            <button
-              className={`adminlink ${
-                page === "admin"
-                  ? "active"
-                  : ""
-              }`}
-              onClick={() =>
-                setPage("admin")
-              }
-              type="button"
-            >
-              <Shield size={20} />
-              <span>Admin</span>
-            </button>
-          )}
-
-          {isOwner && (
-            <button
-              className={`ownerlink ${
-                page === "owner"
-                  ? "active"
-                  : ""
-              }`}
-              onClick={() =>
-                setPage("owner")
-              }
-              type="button"
-            >
-              <Crown size={20} />
-              <span>Owner</span>
-            </button>
-          )}
-        </nav>
-
-        <div className="sidebottom">
-          <button
-            onClick={logout}
-            type="button"
-          >
-            <LogOut size={20} />
-            <span>Abmelden</span>
-          </button>
-        </div>
-      </aside>
+      <div className="desktop-sidebar">
+        <Sidebar
+          page={page}
+          setPage={setPage}
+          profile={profile}
+          logout={logout}
+        />
+      </div>
 
       <main>
-        <header>
-          <div className="mobilebrand">
-            CROW<span>Social</span>
+        <header className="mobile-header">
+          <button
+            className="icon-btn"
+            onClick={() => setMobileMenu(true)}
+          >
+            <Menu size={23} />
+          </button>
+
+          <div className="mobile-brand">
+            <div className="logo-mark">C</div>
+            <strong>CrowSocial</strong>
           </div>
 
-          <div className="topactions">
-            <button
-              type="button"
-              onClick={() =>
-                setMobileMenu(
-                  (value) => !value
-                )
-              }
-              aria-label="Menü"
-            >
-              <Menu size={20} />
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setPage("profile")
-              }
-              aria-label="Profil"
-            >
-              <Avatar
-                profile={profile}
-                size={34}
-              />
-            </button>
-          </div>
+          <Avatar profile={profile} size={34} />
         </header>
 
-        {mobileMenu && (
-          <div
-            className="panel"
-            style={{
-              position: "relative",
-              zIndex: 20,
-              marginTop: 10,
-            }}
-          >
-            <button
-              className="secondary"
-              onClick={() => {
-                setPage("home");
-                setMobileMenu(false);
-              }}
-              type="button"
-            >
-              Startseite
-            </button>
-
-            <button
-              className="secondary"
-              style={{
-                marginLeft: 8,
-              }}
-              onClick={() => {
-                setPage("profile");
-                setMobileMenu(false);
-              }}
-              type="button"
-            >
-              Profil
-            </button>
-
-            {isAdmin && (
-              <button
-                className="secondary"
-                style={{
-                  marginLeft: 8,
-                }}
-                onClick={() => {
-                  setPage("admin");
-                  setMobileMenu(false);
-                }}
-                type="button"
-              >
-                Admin
-              </button>
-            )}
-
-            <button
-              className="secondary"
-              style={{
-                marginLeft: 8,
-              }}
-              onClick={() =>
-                setMobileMenu(false)
-              }
-              type="button"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
-        {page === "home" && (
-          <>
-            <section className="hero">
-              <h1>
-                Willkommen,{" "}
-                {displayName} 👋
-              </h1>
-
-              <p>
-                Was gibt es Neues bei
-                CrowSocial?
-              </p>
-            </section>
-
-            <section className="composer">
-              <textarea
-                value={composer}
-                onChange={(e) =>
-                  setComposer(
-                    e.target.value
-                  )
-                }
-                placeholder="Was möchtest du teilen?"
-              />
-
-              <div className="composerbar">
-                <span>
-                  <ImageIcon
-                    size={18}
-                  />
-                </span>
-
-                <button
-                  className="primary small"
-                  onClick={
-                    createPost
-                  }
-                  disabled={
-                    !composer.trim()
-                  }
-                  type="button"
-                >
-                  Posten
-                </button>
-              </div>
-            </section>
-
-            {loading ? (
-              <div className="empty">
-                Posts werden
-                geladen...
-              </div>
-            ) : filteredPosts.length ===
-              0 ? (
-              <div className="empty">
-                Noch keine Posts
-                vorhanden.
-              </div>
-            ) : (
-              filteredPosts.map(
-                (post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    currentUserId={
-                      sessionUserId
-                    }
-                  />
-                )
-              )
-            )}
-          </>
-        )}
-
-        {page === "search" && (
-          <section className="panel">
-            <h2>Suche</h2>
-
-            <div className="searchbox">
-              <Search size={20} />
-
-              <input
-                value={searchTerm}
-                onChange={(e) =>
-                  setSearchTerm(
-                    e.target.value
-                  )
-                }
-                placeholder="Posts und Benutzer suchen..."
-              />
-            </div>
-
-            <div
-              style={{
-                marginTop: 20,
-              }}
-            >
-              {searchTerm &&
-              filteredPosts.length ===
-                0 ? (
-                <div className="empty">
-                  Keine Ergebnisse
-                  gefunden.
-                </div>
-              ) : (
-                filteredPosts.map(
-                  (post) => (
-                    <PostCard
-                      key={post.id}
-                      post={post}
-                      currentUserId={
-                        sessionUserId
-                      }
-                    />
-                  )
-                )
-              )}
-            </div>
-          </section>
-        )}
-
-        {page === "profile" && (
-          <section className="profile">
-            <div className="cover" />
-
-            <div className="profiletop">
-              <Avatar
-                profile={profile}
-                size={90}
-              />
-
-              <button
-                className="secondary"
-                type="button"
-                onClick={() =>
-                  setEditingProfile(
-                    true
-                  )
-                }
-              >
-                Profil bearbeiten
-              </button>
-            </div>
-
-            <section className="panel">
-              <h2>
-                {displayName}
-                <BadgeRow
-                  profile={profile}
-                />
-              </h2>
-
-              <p className="muted">
-                @{profile.username ||
-                  "user"}
-              </p>
-
-              {profile.bio ? (
-                <p
-                  style={{
-                    whiteSpace:
-                      "pre-wrap",
-                  }}
-                >
-                  {profile.bio}
-                </p>
-              ) : (
-                <p className="muted">
-                  Noch keine Bio
-                  vorhanden.
-                </p>
-              )}
-
-              {profile.website && (
-                <p>
-                  <a
-                    href={
-                      profile.website.startsWith(
-                        "http"
-                      )
-                        ? profile.website
-                        : `https://${profile.website}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      color:
-                        "inherit",
-                    }}
-                  >
-                    🌐{" "}
-                    {profile.website}
-                  </a>
-                </p>
-              )}
-
-              <div className="stats">
-                <b>
-                  0
-                  <span>Posts</span>
-                </b>
-
-                <b>
-                  0
-                  <span>
-                    Follower
-                  </span>
-                </b>
-
-                <b>
-                  0
-                  <span>
-                    Folge ich
-                  </span>
-                </b>
-              </div>
-            </section>
-          </section>
-        )}
-
-        {page === "messages" && (
-          <section className="panel">
-            <h2>Nachrichten</h2>
-
-            <div className="empty">
-              Deine Nachrichten
-              werden hier
-              angezeigt.
-            </div>
-          </section>
-        )}
-
-        {page === "notifications" && (
-          <section className="panel">
-            <h2>
-              Benachrichtigungen
-            </h2>
-
-            <div className="empty">
-              Noch keine
-              Benachrichtigungen.
-            </div>
-          </section>
-        )}
-
-        {page === "settings" && (
-          <section className="panel">
-            <h2>
-              Einstellungen
-            </h2>
-
-            <div className="setting">
-              <div>
-                <strong>
-                  Account
-                </strong>
-
-                <p className="muted">
-                  {profile.username ||
-                    "user"}
-                </p>
-              </div>
-
-              <ChevronRight
-                size={18}
-              />
-            </div>
-
-            <div className="setting">
-              <div>
-                <strong>
-                  Rolle
-                </strong>
-
-                <p className="muted">
-                  {profile.role}
-                </p>
-              </div>
-
-              <ChevronRight
-                size={18}
-              />
-            </div>
-
-            <div className="setting">
-              <div>
-                <strong>
-                  Verifizierung
-                </strong>
-
-                <p className="muted">
-                  {profile.verified
-                    ? "Verifiziert"
-                    : "Nicht verifiziert"}
-                </p>
-              </div>
-
-              <CheckCircle2
-                size={18}
-                className={
-                  profile.verified
-                    ? "blue"
-                    : ""
-                }
-              />
-            </div>
-          </section>
-        )}
-
-        {page === "admin" &&
-          isAdmin && (
-            <section>
-              <div className="adminhero">
-                <Shield />
-
-                <div>
-                  <h1>
-                    Admin-Bereich
-                  </h1>
-
-                  <p>
-                    Verwaltung von
-                    CrowSocial
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid">
-                <div className="admincard">
-                  <Users size={28} />
-                  <b>
-                    Benutzer
-                  </b>
-                  <span>
-                    Benutzer
-                    verwalten und
-                    moderieren.
-                  </span>
-                </div>
-
-                <div className="admincard">
-                  <MessageCircle
-                    size={28}
-                  />
-
-                  <b>
-                    Posts &
-                    Kommentare
-                  </b>
-
-                  <span>
-                    Inhalte
-                    überprüfen
-                    und
-                    moderieren.
-                  </span>
-                </div>
-
-                <div className="admincard">
-                  <Bell size={28} />
-
-                  <b>
-                    Meldungen
-                  </b>
-
-                  <span>
-                    Gemeldete
-                    Inhalte
-                    anzeigen.
-                  </span>
-                </div>
-
-                <div className="admincard">
-                  <CheckCircle2
-                    size={28}
-                  />
-
-                  <b>
-                    Verifizierung
-                  </b>
-
-                  <span>
-                    Verifizierungsanfragen
-                    verwalten.
-                  </span>
-                </div>
-              </div>
-            </section>
-          )}
-
-        {page === "owner" &&
-          isOwner && (
-            <section>
-              <div className="adminhero">
-                <Crown />
-
-                <div>
-                  <h1>
-                    Owner-Bereich
-                  </h1>
-
-                  <p>
-                    Vollständige
-                    CrowSocial-Verwaltung
-                  </p>
-                </div>
-              </div>
-
-              <div className="panel">
-                <h2>
-                  {displayName}
-                  <BadgeRow
-                    profile={profile}
-                  />
-                </h2>
-
-                <p className="muted">
-                  OWNER · ADMIN ·
-                  VERIFIZIERT
-                </p>
-
-                <div className="owner-badges">
-                  <span className="blue">
-                    🔵 Verifiziert
-                  </span>
-
-                  <span className="shield">
-                    🛡️ Admin
-                  </span>
-
-                  <span className="owner">
-                    👑 Owner
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid">
-                <div className="admincard">
-                  <Users size={28} />
-
-                  <b>
-                    Benutzerverwaltung
-                  </b>
-
-                  <span>
-                    Benutzer,
-                    Rollen und
-                    Sperren
-                    verwalten.
-                  </span>
-                </div>
-
-                <div className="admincard">
-                  <Shield size={28} />
-
-                  <b>
-                    Admins
-                  </b>
-
-                  <span>
-                    Administratoren
-                    und
-                    Moderatoren
-                    verwalten.
-                  </span>
-                </div>
-
-                <div className="admincard">
-                  <Settings
-                    size={28}
-                  />
-
-                  <b>
-                    Globale
-                    Einstellungen
-                  </b>
-
-                  <span>
-                    CrowSocial-Systemeinstellungen
-                    verwalten.
-                  </span>
-                </div>
-
-                <div className="admincard">
-                  <Bell size={28} />
-
-                  <b>
-                    Logs
-                  </b>
-
-                  <span>
-                    Administrative
-                    Aktionen
-                    anzeigen.
-                  </span>
-                </div>
-              </div>
-            </section>
-          )}
-
-        <div className="rightcol">
-          <div className="card">
-            <h3>
-              Dein Account
-            </h3>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems:
-                  "center",
-                gap: 10,
-                marginBottom: 16,
-              }}
-            >
-              <Avatar
-                profile={profile}
-              />
-
-              <div>
-                <strong>
-                  {displayName}
-                </strong>
-
-                <div className="muted">
-                  @
-                  {profile.username ||
-                    "user"}
-                </div>
-              </div>
-            </div>
-
-            <div className="stat">
-              <span>Rolle</span>
-              <strong>
-                {profile.role}
-              </strong>
-            </div>
-
-            <div className="stat">
-              <span>
-                Verifiziert
-              </span>
-
-              <strong>
-                {profile.verified
-                  ? "Ja"
-                  : "Nein"}
-              </strong>
-            </div>
-          </div>
+        <div className="content">
+          {renderPage()}
         </div>
       </main>
 
-      <div className="bottomnav">
-        <button
-          className={
-            page === "home"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setPage("home")
-          }
-          type="button"
-        >
-          <Home size={21} />
-        </button>
-
-        <button
-          className={
-            page === "search"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setPage("search")
-          }
-          type="button"
-        >
-          <Search size={21} />
-        </button>
-
-        <button
-          className={
-            page === "messages"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setPage("messages")
-          }
-          type="button"
-        >
-          <MessageCircle
-            size={21}
-          />
-        </button>
-
-        <button
-          className={
-            page === "notifications"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setPage(
-              "notifications"
-            )
-          }
-          type="button"
-        >
-          <Bell size={21} />
-        </button>
-
-        <button
-          className={
-            page === "profile"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setPage("profile")
-          }
-          type="button"
-        >
-          <CircleUserRound
-            size={21}
-          />
-        </button>
-      </div>
-
-      {editingProfile &&
-        profile && (
-          <ProfileEditModal
-            profile={profile}
-            onClose={() =>
-              setEditingProfile(
-                false
-              )
-            }
-            onSaved={(
-              updatedProfile
-            ) => {
-              setProfile(
-                updatedProfile
-              );
-            }}
-          />
-        )}
+      {editProfile && (
+        <ProfileEditModal
+          profile={profile}
+          onClose={() => setEditProfile(false)}
+          onSaved={(newProfile) => {
+            setProfile(newProfile);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-const root =
-  document.getElementById(
-    "root"
-  );
+const root = document.getElementById("root");
 
 if (!root) {
-  throw new Error(
-    "Root-Element wurde nicht gefunden."
-  );
+  throw new Error("Root element wurde nicht gefunden.");
 }
 
 createRoot(root).render(
-  <App />
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
 );
