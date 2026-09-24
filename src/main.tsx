@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  ArrowLeft,
   Bell,
   CheckCircle2,
   ChevronRight,
@@ -24,6 +23,9 @@ import {
   Lock,
   User,
   Save,
+  Trash2,
+  Reply,
+  ArrowLeft,
 } from "lucide-react";
 import {
   createClient,
@@ -38,7 +40,7 @@ const supabaseUrl =
 
 const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  "sb_publishable_eMlH01mR1rrwTfRqIE0rnA_XTDmW8zt";
+  "sb_publishable_eMlH01mR1rrwTfRqIE0rnM8zt";
 
 const supabase = createClient(
   supabaseUrl,
@@ -78,6 +80,7 @@ type Comment = {
   id: string;
   post_id: string;
   user_id: string;
+  parent_id?: string | null;
   content: string;
   created_at: string;
   profile?: Profile | null;
@@ -92,10 +95,6 @@ type Page =
   | "settings"
   | "admin"
   | "owner";
-
-/* =========================================================
-   HILFSFUNKTIONEN
-========================================================= */
 
 function getProfileObject(
   value: unknown
@@ -226,10 +225,6 @@ function formatDate(date: string) {
   );
 }
 
-/* =========================================================
-   BADGES
-========================================================= */
-
 function BadgeRow({
   profile,
 }: {
@@ -268,10 +263,6 @@ function BadgeRow({
     </div>
   );
 }
-
-/* =========================================================
-   AVATAR
-========================================================= */
 
 function Avatar({
   profile,
@@ -329,7 +320,6 @@ function PostCard({
   onLike,
   session,
   currentProfile,
-  onProfileClick,
 }: {
   post: Post;
   onLike: (
@@ -338,9 +328,6 @@ function PostCard({
   ) => void;
   session: Session;
   currentProfile: Profile;
-  onProfileClick: (
-    profile: Profile
-  ) => void;
 }) {
   const profile = getProfileObject(
     post.profiles
@@ -365,6 +352,11 @@ function PostCard({
     setCommentSending,
   ] = useState(false);
 
+  const [
+    replyTo,
+    setReplyTo,
+  ] = useState<Comment | null>(null);
+
   const loadComments = async () => {
     setCommentsLoading(true);
 
@@ -375,7 +367,7 @@ function PostCard({
       } = await supabase
         .from("comments")
         .select(
-          "id,post_id,user_id,content,created_at"
+          "id,post_id,user_id,parent_id,content,created_at"
         )
         .eq("post_id", post.id)
         .order("created_at", {
@@ -487,10 +479,12 @@ function PostCard({
         .insert({
           post_id: post.id,
           user_id: session.user.id,
+          parent_id:
+            replyTo?.id || null,
           content,
         })
         .select(
-          "id,post_id,user_id,content,created_at"
+          "id,post_id,user_id,parent_id,content,created_at"
         )
         .single();
 
@@ -510,6 +504,7 @@ function PostCard({
       ]);
 
       setCommentText("");
+      setReplyTo(null);
       setCommentsOpen(true);
     } catch (error) {
       console.error(
@@ -527,78 +522,126 @@ function PostCard({
     }
   };
 
-  const openAuthorProfile = () => {
-    if (profile) {
-      onProfileClick(profile);
+  const deleteComment = async (
+    comment: Comment
+  ) => {
+    const canDelete =
+      comment.user_id ===
+        session.user.id ||
+      currentProfile.role ===
+        "OWNER" ||
+      currentProfile.role ===
+        "ADMIN" ||
+      currentProfile.role ===
+        "MODERATOR";
+
+    if (!canDelete) {
+      alert(
+        "Du darfst diesen Kommentar nicht löschen."
+      );
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Diesen Kommentar wirklich löschen?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const {
+        error,
+      } = await supabase
+        .from("comments")
+        .delete()
+        .eq(
+          "id",
+          comment.id
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      setComments(
+        (current) =>
+          current.filter(
+            (item) =>
+              item.id !==
+                comment.id &&
+              item.parent_id !==
+                comment.id
+          )
+      );
+
+      if (
+        replyTo?.id ===
+        comment.id
+      ) {
+        setReplyTo(null);
+      }
+    } catch (error) {
+      console.error(
+        "Kommentar konnte nicht gelöscht werden:",
+        error
+      );
+
+      alert(
+        `Kommentar konnte nicht gelöscht werden:\n\n${getErrorMessage(
+          error
+        )}`
+      );
     }
   };
+
+  const rootComments =
+    comments.filter(
+      (comment) =>
+        !comment.parent_id
+    );
+
+  const repliesFor = (
+    commentId: string
+  ) =>
+    comments.filter(
+      (comment) =>
+        comment.parent_id ===
+        commentId
+    );
 
   return (
     <article className="post-card">
       <div className="post-header">
-        <div
-          role={profile ? "button" : undefined}
-          tabIndex={profile ? 0 : undefined}
-          onClick={
-            profile
-              ? openAuthorProfile
-              : undefined
-          }
-          onKeyDown={(event) => {
-            if (
-              profile &&
-              (event.key === "Enter" ||
-                event.key === " ")
-            ) {
-              event.preventDefault();
-              openAuthorProfile();
-            }
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            cursor: profile
-              ? "pointer"
-              : "default",
-            minWidth: 0,
-            flex: 1,
-          }}
-          aria-label={
-            profile
-              ? `Profil von ${profile.display_name}`
-              : undefined
-          }
-        >
-          <Avatar
-            profile={profile}
-            size={44}
-          />
+        <Avatar
+          profile={profile}
+          size={44}
+        />
 
-          <div className="post-user">
-            <div className="post-name-row">
-              <strong>
-                {profile?.display_name ||
-                  profile?.username ||
-                  "Unbekannt"}
-              </strong>
+        <div className="post-user">
+          <div className="post-name-row">
+            <strong>
+              {profile?.display_name ||
+                profile?.username ||
+                "Unbekannt"}
+            </strong>
 
-              {profile && (
-                <BadgeRow
-                  profile={profile}
-                />
-              )}
-            </div>
-
-            <span>
-              @{profile?.username ||
-                "user"}{" "}
-              ·{" "}
-              {formatDate(
-                post.created_at
-              )}
-            </span>
+            {profile && (
+              <BadgeRow
+                profile={profile}
+              />
+            )}
           </div>
+
+          <span>
+            @{profile?.username ||
+              "user"}{" "}
+            · {formatDate(
+              post.created_at
+            )}
+          </span>
         </div>
 
         <button
@@ -678,6 +721,56 @@ function PostCard({
 
       {commentsOpen && (
         <div className="comments-section">
+          {replyTo && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent:
+                  "space-between",
+                gap: 10,
+                padding:
+                  "10px 12px",
+                marginBottom: 10,
+                borderRadius: 10,
+                background:
+                  "#18181b",
+                border:
+                  "1px solid #27272a",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 13,
+                  color: "#a1a1aa",
+                }}
+              >
+                Antwort auf{" "}
+                <strong
+                  style={{
+                    color: "#e4e4e7",
+                  }}
+                >
+                  @
+                  {replyTo.profile
+                    ?.username ||
+                    "user"}
+                </strong>
+              </span>
+
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() =>
+                  setReplyTo(null)
+                }
+                title="Antwort abbrechen"
+              >
+                <X size={17} />
+              </button>
+            </div>
+          )}
+
           <div className="comment-composer">
             <Avatar
               profile={
@@ -697,7 +790,11 @@ function PostCard({
                       .value
                   )
                 }
-                placeholder="Schreibe einen Kommentar..."
+                placeholder={
+                  replyTo
+                    ? `Antwort auf @${replyTo.profile?.username || "user"}...`
+                    : "Schreibe einen Kommentar..."
+                }
                 rows={2}
                 maxLength={500}
                 disabled={
@@ -718,6 +815,8 @@ function PostCard({
               >
                 {commentSending
                   ? "Senden..."
+                  : replyTo
+                  ? "Antworten"
                   : "Kommentieren"}
               </button>
             </div>
@@ -735,124 +834,331 @@ function PostCard({
                 Sei der Erste!
               </div>
             ) : (
-              comments.map(
-                (comment) => (
-                  <div
-                    className="comment-item"
-                    key={
+              rootComments.map(
+                (comment) => {
+                  const replies =
+                    repliesFor(
                       comment.id
-                    }
-                  >
-                    <div
-                      role={
-                        comment.profile
-                          ? "button"
-                          : undefined
-                      }
-                      tabIndex={
-                        comment.profile
-                          ? 0
-                          : undefined
-                      }
-                      onClick={() => {
-                        if (
-                          comment.profile
-                        ) {
-                          onProfileClick(
-                            comment.profile
-                          );
-                        }
-                      }}
-                      onKeyDown={(
-                        event
-                      ) => {
-                        if (
-                          comment.profile &&
-                          (event.key ===
-                            "Enter" ||
-                            event.key ===
-                              " ")
-                        ) {
-                          event.preventDefault();
+                    );
 
-                          onProfileClick(
-                            comment.profile
-                          );
-                        }
-                      }}
-                      style={{
-                        cursor:
-                          comment.profile
-                            ? "pointer"
-                            : "default",
-                      }}
-                      aria-label={
-                        comment.profile
-                          ? `Profil von ${comment.profile.display_name}`
-                          : undefined
+                  const canDelete =
+                    comment.user_id ===
+                      session
+                        .user.id ||
+                    currentProfile.role ===
+                      "OWNER" ||
+                    currentProfile.role ===
+                      "ADMIN" ||
+                    currentProfile.role ===
+                      "MODERATOR";
+
+                  return (
+                    <React.Fragment
+                      key={
+                        comment.id
                       }
                     >
-                      <Avatar
-                        profile={
-                          comment.profile ||
-                          null
-                        }
-                        size={36}
-                      />
-                    </div>
+                      <div className="comment-item">
+                        <Avatar
+                          profile={
+                            comment.profile ||
+                            null
+                          }
+                          size={36}
+                        />
 
-                    <div className="comment-body">
-                      <div className="comment-meta">
-                        <strong
-                          style={{
-                            cursor:
-                              comment.profile
-                                ? "pointer"
-                                : "default",
-                          }}
-                          onClick={() => {
-                            if (
-                              comment.profile
-                            ) {
-                              onProfileClick(
-                                comment.profile
-                              );
+                        <div className="comment-body">
+                          <div className="comment-meta">
+                            <strong>
+                              {comment
+                                .profile
+                                ?.display_name ||
+                                comment
+                                  .profile
+                                  ?.username ||
+                                "Unbekannt"}
+                            </strong>
+
+                            {comment.profile && (
+                              <BadgeRow
+                                profile={
+                                  comment.profile
+                                }
+                              />
+                            )}
+
+                            <span>
+                              ·{" "}
+                              {formatDate(
+                                comment.created_at
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="comment-content">
+                            {
+                              comment.content
                             }
-                          }}
-                        >
-                          {comment
-                            .profile
-                            ?.display_name ||
-                            comment
-                              .profile
-                              ?.username ||
-                            "Unbekannt"}
-                        </strong>
+                          </div>
 
-                        {comment.profile && (
-                          <BadgeRow
-                            profile={
-                              comment.profile
-                            }
-                          />
-                        )}
+                          <div
+                            style={{
+                              display:
+                                "flex",
+                              gap: 8,
+                              marginTop:
+                                7,
+                              flexWrap:
+                                "wrap",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="icon-button"
+                              onClick={() =>
+                                setReplyTo(
+                                  comment
+                                )
+                              }
+                              title="Antworten"
+                              style={{
+                                display:
+                                  "inline-flex",
+                                alignItems:
+                                  "center",
+                                gap: 5,
+                                width:
+                                  "auto",
+                                padding:
+                                  "5px 8px",
+                                fontSize:
+                                  12,
+                              }}
+                            >
+                              <Reply
+                                size={
+                                  15
+                                }
+                              />
+                              Antworten
+                            </button>
 
-                        <span>
-                          ·{" "}
-                          {formatDate(
-                            comment.created_at
-                          )}
-                        </span>
+                            {canDelete && (
+                              <button
+                                type="button"
+                                className="icon-button"
+                                onClick={() =>
+                                  deleteComment(
+                                    comment
+                                  )
+                                }
+                                title="Kommentar löschen"
+                                style={{
+                                  color:
+                                    "#ef4444",
+                                  display:
+                                    "inline-flex",
+                                  alignItems:
+                                    "center",
+                                  gap: 5,
+                                  width:
+                                    "auto",
+                                  padding:
+                                    "5px 8px",
+                                  fontSize:
+                                    12,
+                                }}
+                              >
+                                <Trash2
+                                  size={
+                                    15
+                                  }
+                                />
+                                Löschen
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="comment-content">
-                        {
-                          comment.content
+                      {replies.map(
+                        (
+                          reply
+                        ) => {
+                          const canDeleteReply =
+                            reply.user_id ===
+                              session
+                                .user
+                                .id ||
+                            currentProfile.role ===
+                              "OWNER" ||
+                            currentProfile.role ===
+                              "ADMIN" ||
+                            currentProfile.role ===
+                              "MODERATOR";
+
+                          return (
+                            <div
+                              className="comment-item"
+                              key={
+                                reply.id
+                              }
+                              style={{
+                                marginLeft:
+                                  42,
+                                borderLeft:
+                                  "2px solid #27272a",
+                                paddingLeft:
+                                  12,
+                              }}
+                            >
+                              <Avatar
+                                profile={
+                                  reply.profile ||
+                                  null
+                                }
+                                size={
+                                  32
+                                }
+                              />
+
+                              <div className="comment-body">
+                                <div className="comment-meta">
+                                  <strong>
+                                    {reply
+                                      .profile
+                                      ?.display_name ||
+                                      reply
+                                        .profile
+                                        ?.username ||
+                                      "Unbekannt"}
+                                  </strong>
+
+                                  {reply.profile && (
+                                    <BadgeRow
+                                      profile={
+                                        reply.profile
+                                      }
+                                    />
+                                  )}
+
+                                  <span>
+                                    ·{" "}
+                                    {formatDate(
+                                      reply.created_at
+                                    )}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    fontSize:
+                                      12,
+                                    color:
+                                      "#a1a1aa",
+                                    marginBottom:
+                                      3,
+                                  }}
+                                >
+                                  Antwort auf{" "}
+                                  <strong>
+                                    @
+                                    {comment
+                                      .profile
+                                      ?.username ||
+                                      "user"}
+                                  </strong>
+                                </div>
+
+                                <div className="comment-content">
+                                  {
+                                    reply.content
+                                  }
+                                </div>
+
+                                <div
+                                  style={{
+                                    display:
+                                      "flex",
+                                    gap: 8,
+                                    marginTop:
+                                      7,
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="icon-button"
+                                    onClick={() =>
+                                      setReplyTo(
+                                        comment
+                                      )
+                                    }
+                                    title="Antworten"
+                                    style={{
+                                      display:
+                                        "inline-flex",
+                                      alignItems:
+                                        "center",
+                                      gap: 5,
+                                      width:
+                                        "auto",
+                                      padding:
+                                        "5px 8px",
+                                      fontSize:
+                                        12,
+                                    }}
+                                  >
+                                    <Reply
+                                      size={
+                                        15
+                                      }
+                                    />
+                                    Antworten
+                                  </button>
+
+                                  {canDeleteReply && (
+                                    <button
+                                      type="button"
+                                      className="icon-button"
+                                      onClick={() =>
+                                        deleteComment(
+                                          reply
+                                        )
+                                      }
+                                      title="Kommentar löschen"
+                                      style={{
+                                        color:
+                                          "#ef4444",
+                                        display:
+                                          "inline-flex",
+                                        alignItems:
+                                          "center",
+                                        gap: 5,
+                                        width:
+                                          "auto",
+                                        padding:
+                                          "5px 8px",
+                                        fontSize:
+                                          12,
+                                      }}
+                                    >
+                                      <Trash2
+                                        size={
+                                          15
+                                        }
+                                      />
+                                      Löschen
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
                         }
-                      </div>
-                    </div>
-                  </div>
-                )
+                      )}
+                    </React.Fragment>
+                  );
+                }
               )
             )}
           </div>
@@ -1796,7 +2102,6 @@ function HomePage({
   setPostImageFile,
   onPost,
   onLike,
-  onProfileClick,
 }: {
   posts: Post[];
   profile: Profile;
@@ -1813,9 +2118,6 @@ function HomePage({
   onLike: (
     postId: string,
     liked: boolean
-  ) => void;
-  onProfileClick: (
-    profile: Profile
   ) => void;
 }) {
   const imagePreview =
@@ -1974,9 +2276,6 @@ function HomePage({
               currentProfile={
                 profile
               }
-              onProfileClick={
-                onProfileClick
-              }
             />
           ))
         )}
@@ -1989,13 +2288,7 @@ function HomePage({
    SEARCH
 ========================================================= */
 
-function SearchPage({
-  onProfileClick,
-}: {
-  onProfileClick: (
-    profile: Profile
-  ) => void;
-}) {
+function SearchPage() {
   const [query, setQuery] =
     useState("");
 
@@ -2091,44 +2384,13 @@ function SearchPage({
             <div
               className="user-result"
               key={profile.id}
-              role="button"
-              tabIndex={0}
-              onClick={() =>
-                onProfileClick(
-                  profile
-                )
-              }
-              onKeyDown={(
-                event
-              ) => {
-                if (
-                  event.key ===
-                    "Enter" ||
-                  event.key ===
-                    " "
-                ) {
-                  event.preventDefault();
-
-                  onProfileClick(
-                    profile
-                  );
-                }
-              }}
-              style={{
-                cursor: "pointer",
-              }}
             >
               <Avatar
                 profile={profile}
                 size={48}
               />
 
-              <div
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
+              <div>
                 <div className="post-name-row">
                   <strong>
                     {
@@ -2148,42 +2410,9 @@ function SearchPage({
                 </span>
               </div>
 
-              <button
-                className="icon-button"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-
-                  onProfileClick(
-                    profile
-                  );
-                }}
-                aria-label={`Profil von ${profile.display_name} öffnen`}
-              >
-                <ChevronRight
-                  size={20}
-                />
-              </button>
+              <ChevronRight size={20} />
             </div>
           )
-        )}
-
-      {!loading &&
-        query.trim() &&
-        profiles.length === 0 && (
-          <div className="empty-card">
-            <Users size={34} />
-
-            <h3>
-              Keine Profile gefunden
-            </h3>
-
-            <p>
-              Versuche einen anderen
-              Namen oder
-              Benutzernamen.
-            </p>
-          </div>
         )}
     </main>
   );
@@ -2225,34 +2454,13 @@ function SimplePage({
 
 function ProfilePage({
   profile,
-  isOwnProfile,
   onEdit,
-  onBack,
 }: {
   profile: Profile;
-  isOwnProfile: boolean;
   onEdit: () => void;
-  onBack: () => void;
 }) {
   return (
     <main className="feed">
-      {!isOwnProfile && (
-        <div
-          style={{
-            marginBottom: "14px",
-          }}
-        >
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={onBack}
-          >
-            <ArrowLeft size={18} />
-            Zurück
-          </button>
-        </div>
-      )}
-
       <section className="profile-card">
         <div className="profile-cover" />
 
@@ -2284,38 +2492,15 @@ function ProfilePage({
             )}
           </div>
 
-          {isOwnProfile && (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={onEdit}
-            >
-              Profil bearbeiten
-            </button>
-          )}
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onEdit}
+          >
+            Profil bearbeiten
+          </button>
         </div>
       </section>
-
-      {!isOwnProfile && (
-        <div
-          className="empty-card"
-          style={{
-            marginTop: "14px",
-          }}
-        >
-          <User size={32} />
-
-          <h3>
-            @{profile.username}
-          </h3>
-
-          <p>
-            Dies ist das öffentliche
-            Profil von{" "}
-            {profile.display_name}.
-          </p>
-        </div>
-      )}
     </main>
   );
 }
@@ -2644,13 +2829,6 @@ function App() {
       null
     );
 
-  const [
-    viewingProfile,
-    setViewingProfile,
-  ] = useState<Profile | null>(
-    null
-  );
-
   const [loading, setLoading] =
     useState(true);
 
@@ -2682,41 +2860,6 @@ function App() {
   ] = useState<File | null>(
     null
   );
-
-  /* =======================================================
-     PROFIL ÖFFNEN
-  ======================================================= */
-
-  const openProfile = (
-    targetProfile: Profile
-  ) => {
-    setViewingProfile(
-      targetProfile
-    );
-    setPage("profile");
-    setMobileMenu(false);
-  };
-
-  /* =======================================================
-     NAVIGATION
-  ======================================================= */
-
-  const navigate = (
-    nextPage: Page
-  ) => {
-    if (
-      nextPage === "profile"
-    ) {
-      setViewingProfile(null);
-    }
-
-    setPage(nextPage);
-    setMobileMenu(false);
-  };
-
-  /* =======================================================
-     PROFIL LADEN
-  ======================================================= */
 
   const loadProfile = async (
     user: SupabaseUser
@@ -2754,10 +2897,6 @@ function App() {
       data as Profile
     );
   };
-
-  /* =======================================================
-     POSTS LADEN
-  ======================================================= */
 
   const loadPosts = async () => {
     const {
@@ -2895,10 +3034,6 @@ function App() {
     );
   };
 
-  /* =======================================================
-     AUTH INITIALISIEREN
-  ======================================================= */
-
   useEffect(() => {
     let mounted = true;
 
@@ -2958,7 +3093,6 @@ function App() {
             );
           } else {
             setProfile(null);
-            setViewingProfile(null);
           }
         }
       );
@@ -2968,10 +3102,6 @@ function App() {
       subscription.unsubscribe();
     };
   }, []);
-
-  /* =======================================================
-     POSTS BEI LOGIN LADEN
-  ======================================================= */
 
   useEffect(() => {
     if (
@@ -2984,10 +3114,6 @@ function App() {
     session,
     profile,
   ]);
-
-  /* =======================================================
-     POST ERSTELLEN
-  ======================================================= */
 
   const createPost =
     async () => {
@@ -3126,10 +3252,6 @@ function App() {
         );
       }
     };
-
-  /* =======================================================
-     LIKES
-  ======================================================= */
 
   const toggleLike = async (
     postId: string,
@@ -3290,25 +3412,16 @@ function App() {
     }
   };
 
-  /* =======================================================
-     LOGOUT
-  ======================================================= */
-
   const logout =
     async () => {
       await supabase.auth.signOut();
 
       setSession(null);
       setProfile(null);
-      setViewingProfile(null);
       setPosts([]);
       setPage("home");
       setMobileMenu(false);
     };
-
-  /* =======================================================
-     LOADING
-  ======================================================= */
 
   if (loading) {
     return (
@@ -3349,18 +3462,8 @@ function App() {
   const currentSession =
     session;
 
-  const displayedProfile =
-    viewingProfile ||
-    currentProfile;
-
-  const isOwnProfile =
-    displayedProfile.id ===
-    currentProfile.id;
-
   return (
     <div className="app">
-      {/* MOBILE HEADER */}
-
       <header className="mobile-header">
         <button
           className="icon-button"
@@ -3385,8 +3488,6 @@ function App() {
           size={34}
         />
       </header>
-
-      {/* MOBILE SIDEBAR */}
 
       <div
         className={`mobile-sidebar ${
@@ -3419,7 +3520,7 @@ function App() {
 
           <Sidebar
             page={page}
-            setPage={navigate}
+            setPage={setPage}
             profile={
               currentProfile
             }
@@ -3433,20 +3534,16 @@ function App() {
         </div>
       </div>
 
-      {/* DESKTOP SIDEBAR */}
-
       <div className="desktop-sidebar">
         <Sidebar
           page={page}
-          setPage={navigate}
+          setPage={setPage}
           profile={
             currentProfile
           }
           logout={logout}
         />
       </div>
-
-      {/* MAIN */}
 
       <div className="main-content">
         {page === "home" && (
@@ -3476,18 +3573,11 @@ function App() {
             onLike={
               toggleLike
             }
-            onProfileClick={
-              openProfile
-            }
           />
         )}
 
         {page === "search" && (
-          <SearchPage
-            onProfileClick={
-              openProfile
-            }
-          />
+          <SearchPage />
         )}
 
         {page === "messages" && (
@@ -3516,22 +3606,13 @@ function App() {
         {page === "profile" && (
           <ProfilePage
             profile={
-              displayedProfile
-            }
-            isOwnProfile={
-              isOwnProfile
+              currentProfile
             }
             onEdit={() =>
               setEditProfile(
                 true
               )
             }
-            onBack={() => {
-              setViewingProfile(
-                null
-              );
-              setPage("search");
-            }}
           />
         )}
 
@@ -3573,37 +3654,23 @@ function App() {
           )}
       </div>
 
-      {/* PROFIL MODAL */}
-
-      {editProfile &&
-        isOwnProfile && (
-          <ProfileEditModal
-            profile={
-              currentProfile
-            }
-            onClose={() =>
-              setEditProfile(
-                false
-              )
-            }
-            onSaved={(updated) => {
-              setProfile(
-                updated
-              );
-
-              if (
-                viewingProfile?.id ===
-                updated.id
-              ) {
-                setViewingProfile(
-                  updated
-                );
-              }
-            }}
-          />
-        )}
-
-      {/* PASSWORT MODAL */}
+      {editProfile && (
+        <ProfileEditModal
+          profile={
+            currentProfile
+          }
+          onClose={() =>
+            setEditProfile(
+              false
+            )
+          }
+          onSaved={(updated) => {
+            setProfile(
+              updated
+            );
+          }}
+        />
+      )}
 
       {passwordModal && (
         <PasswordModal
@@ -3617,10 +3684,6 @@ function App() {
     </div>
   );
 }
-
-/* =========================================================
-   START
-========================================================= */
 
 createRoot(
   document.getElementById(
