@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  ArrowLeft,
   Bell,
   CheckCircle2,
   ChevronRight,
@@ -246,10 +247,8 @@ function BadgeRow({
       )}
 
       {(profile.role === "ADMIN" ||
-        profile.role ===
-          "MODERATOR" ||
-        profile.role ===
-          "OWNER") && (
+        profile.role === "MODERATOR" ||
+        profile.role === "OWNER") && (
         <span
           className="badge admin-badge"
           title="Team"
@@ -330,6 +329,7 @@ function PostCard({
   onLike,
   session,
   currentProfile,
+  onProfileClick,
 }: {
   post: Post;
   onLike: (
@@ -338,6 +338,9 @@ function PostCard({
   ) => void;
   session: Session;
   currentProfile: Profile;
+  onProfileClick: (
+    profile: Profile
+  ) => void;
 }) {
   const profile = getProfileObject(
     post.profiles
@@ -524,36 +527,78 @@ function PostCard({
     }
   };
 
+  const openAuthorProfile = () => {
+    if (profile) {
+      onProfileClick(profile);
+    }
+  };
+
   return (
     <article className="post-card">
       <div className="post-header">
-        <Avatar
-          profile={profile}
-          size={44}
-        />
+        <div
+          role={profile ? "button" : undefined}
+          tabIndex={profile ? 0 : undefined}
+          onClick={
+            profile
+              ? openAuthorProfile
+              : undefined
+          }
+          onKeyDown={(event) => {
+            if (
+              profile &&
+              (event.key === "Enter" ||
+                event.key === " ")
+            ) {
+              event.preventDefault();
+              openAuthorProfile();
+            }
+          }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            cursor: profile
+              ? "pointer"
+              : "default",
+            minWidth: 0,
+            flex: 1,
+          }}
+          aria-label={
+            profile
+              ? `Profil von ${profile.display_name}`
+              : undefined
+          }
+        >
+          <Avatar
+            profile={profile}
+            size={44}
+          />
 
-        <div className="post-user">
-          <div className="post-name-row">
-            <strong>
-              {profile?.display_name ||
-                profile?.username ||
-                "Unbekannt"}
-            </strong>
+          <div className="post-user">
+            <div className="post-name-row">
+              <strong>
+                {profile?.display_name ||
+                  profile?.username ||
+                  "Unbekannt"}
+              </strong>
 
-            {profile && (
-              <BadgeRow
-                profile={profile}
-              />
-            )}
+              {profile && (
+                <BadgeRow
+                  profile={profile}
+                />
+              )}
+            </div>
+
+            <span>
+              @{profile?.username ||
+                "user"}{" "}
+              ·{" "}
+              {formatDate(
+                post.created_at
+              )}
+            </span>
           </div>
-
-          <span>
-            @{profile?.username ||
-              "user"}{" "}
-            · {formatDate(
-              post.created_at
-            )}
-          </span>
         </div>
 
         <button
@@ -698,17 +743,83 @@ function PostCard({
                       comment.id
                     }
                   >
-                    <Avatar
-                      profile={
-                        comment.profile ||
-                        null
+                    <div
+                      role={
+                        comment.profile
+                          ? "button"
+                          : undefined
                       }
-                      size={36}
-                    />
+                      tabIndex={
+                        comment.profile
+                          ? 0
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (
+                          comment.profile
+                        ) {
+                          onProfileClick(
+                            comment.profile
+                          );
+                        }
+                      }}
+                      onKeyDown={(
+                        event
+                      ) => {
+                        if (
+                          comment.profile &&
+                          (event.key ===
+                            "Enter" ||
+                            event.key ===
+                              " ")
+                        ) {
+                          event.preventDefault();
+
+                          onProfileClick(
+                            comment.profile
+                          );
+                        }
+                      }}
+                      style={{
+                        cursor:
+                          comment.profile
+                            ? "pointer"
+                            : "default",
+                      }}
+                      aria-label={
+                        comment.profile
+                          ? `Profil von ${comment.profile.display_name}`
+                          : undefined
+                      }
+                    >
+                      <Avatar
+                        profile={
+                          comment.profile ||
+                          null
+                        }
+                        size={36}
+                      />
+                    </div>
 
                     <div className="comment-body">
                       <div className="comment-meta">
-                        <strong>
+                        <strong
+                          style={{
+                            cursor:
+                              comment.profile
+                                ? "pointer"
+                                : "default",
+                          }}
+                          onClick={() => {
+                            if (
+                              comment.profile
+                            ) {
+                              onProfileClick(
+                                comment.profile
+                              );
+                            }
+                          }}
+                        >
                           {comment
                             .profile
                             ?.display_name ||
@@ -1685,6 +1796,7 @@ function HomePage({
   setPostImageFile,
   onPost,
   onLike,
+  onProfileClick,
 }: {
   posts: Post[];
   profile: Profile;
@@ -1701,6 +1813,9 @@ function HomePage({
   onLike: (
     postId: string,
     liked: boolean
+  ) => void;
+  onProfileClick: (
+    profile: Profile
   ) => void;
 }) {
   const imagePreview =
@@ -1859,6 +1974,9 @@ function HomePage({
               currentProfile={
                 profile
               }
+              onProfileClick={
+                onProfileClick
+              }
             />
           ))
         )}
@@ -1871,7 +1989,13 @@ function HomePage({
    SEARCH
 ========================================================= */
 
-function SearchPage() {
+function SearchPage({
+  onProfileClick,
+}: {
+  onProfileClick: (
+    profile: Profile
+  ) => void;
+}) {
   const [query, setQuery] =
     useState("");
 
@@ -1967,13 +2091,44 @@ function SearchPage() {
             <div
               className="user-result"
               key={profile.id}
+              role="button"
+              tabIndex={0}
+              onClick={() =>
+                onProfileClick(
+                  profile
+                )
+              }
+              onKeyDown={(
+                event
+              ) => {
+                if (
+                  event.key ===
+                    "Enter" ||
+                  event.key ===
+                    " "
+                ) {
+                  event.preventDefault();
+
+                  onProfileClick(
+                    profile
+                  );
+                }
+              }}
+              style={{
+                cursor: "pointer",
+              }}
             >
               <Avatar
                 profile={profile}
                 size={48}
               />
 
-              <div>
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
                 <div className="post-name-row">
                   <strong>
                     {
@@ -1996,6 +2151,14 @@ function SearchPage() {
               <button
                 className="icon-button"
                 type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+
+                  onProfileClick(
+                    profile
+                  );
+                }}
+                aria-label={`Profil von ${profile.display_name} öffnen`}
               >
                 <ChevronRight
                   size={20}
@@ -2003,6 +2166,24 @@ function SearchPage() {
               </button>
             </div>
           )
+        )}
+
+      {!loading &&
+        query.trim() &&
+        profiles.length === 0 && (
+          <div className="empty-card">
+            <Users size={34} />
+
+            <h3>
+              Keine Profile gefunden
+            </h3>
+
+            <p>
+              Versuche einen anderen
+              Namen oder
+              Benutzernamen.
+            </p>
+          </div>
         )}
     </main>
   );
@@ -2044,13 +2225,34 @@ function SimplePage({
 
 function ProfilePage({
   profile,
+  isOwnProfile,
   onEdit,
+  onBack,
 }: {
   profile: Profile;
+  isOwnProfile: boolean;
   onEdit: () => void;
+  onBack: () => void;
 }) {
   return (
     <main className="feed">
+      {!isOwnProfile && (
+        <div
+          style={{
+            marginBottom: "14px",
+          }}
+        >
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onBack}
+          >
+            <ArrowLeft size={18} />
+            Zurück
+          </button>
+        </div>
+      )}
+
       <section className="profile-card">
         <div className="profile-cover" />
 
@@ -2082,15 +2284,38 @@ function ProfilePage({
             )}
           </div>
 
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={onEdit}
-          >
-            Profil bearbeiten
-          </button>
+          {isOwnProfile && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onEdit}
+            >
+              Profil bearbeiten
+            </button>
+          )}
         </div>
       </section>
+
+      {!isOwnProfile && (
+        <div
+          className="empty-card"
+          style={{
+            marginTop: "14px",
+          }}
+        >
+          <User size={32} />
+
+          <h3>
+            @{profile.username}
+          </h3>
+
+          <p>
+            Dies ist das öffentliche
+            Profil von{" "}
+            {profile.display_name}.
+          </p>
+        </div>
+      )}
     </main>
   );
 }
@@ -2419,6 +2644,13 @@ function App() {
       null
     );
 
+  const [
+    viewingProfile,
+    setViewingProfile,
+  ] = useState<Profile | null>(
+    null
+  );
+
   const [loading, setLoading] =
     useState(true);
 
@@ -2450,6 +2682,37 @@ function App() {
   ] = useState<File | null>(
     null
   );
+
+  /* =======================================================
+     PROFIL ÖFFNEN
+  ======================================================= */
+
+  const openProfile = (
+    targetProfile: Profile
+  ) => {
+    setViewingProfile(
+      targetProfile
+    );
+    setPage("profile");
+    setMobileMenu(false);
+  };
+
+  /* =======================================================
+     NAVIGATION
+  ======================================================= */
+
+  const navigate = (
+    nextPage: Page
+  ) => {
+    if (
+      nextPage === "profile"
+    ) {
+      setViewingProfile(null);
+    }
+
+    setPage(nextPage);
+    setMobileMenu(false);
+  };
 
   /* =======================================================
      PROFIL LADEN
@@ -2550,10 +2813,6 @@ function App() {
           liked: false,
         })
       ) as Post[];
-
-    /* =====================================================
-       LIKES AUS DER DATENBANK LADEN
-    ===================================================== */
 
     if (
       postList.length > 0 &&
@@ -2699,6 +2958,7 @@ function App() {
             );
           } else {
             setProfile(null);
+            setViewingProfile(null);
           }
         }
       );
@@ -2880,10 +3140,6 @@ function App() {
     }
 
     try {
-      /* =================================================
-         LIKE ENTFERNEN
-      ================================================= */
-
       if (liked) {
         const {
           error,
@@ -2931,10 +3187,6 @@ function App() {
         return;
       }
 
-      /* =================================================
-         PRÜFEN, OB LIKE BEREITS EXISTIERT
-      ================================================= */
-
       const {
         data: existingLike,
         error:
@@ -2961,10 +3213,6 @@ function App() {
         throw checkError;
       }
 
-      /* =================================================
-         BEREITS GE-LIKED
-      ================================================= */
-
       if (existingLike) {
         setPosts(
           (current) =>
@@ -2984,10 +3232,6 @@ function App() {
         return;
       }
 
-      /* =================================================
-         LIKE ERSTELLEN
-      ================================================= */
-
       const {
         error: insertError,
       } =
@@ -3001,18 +3245,6 @@ function App() {
             user_id:
               session.user.id,
           });
-
-      /*
-       * 23505 bedeutet:
-       * Der Like existiert bereits.
-       *
-       * Das kann passieren, wenn z.B.
-       * zwei Klicks sehr schnell hintereinander
-       * ausgeführt wurden.
-       *
-       * In diesem Fall behandeln wir den Like
-       * einfach als bereits gespeichert.
-       */
 
       if (
         insertError &&
@@ -3068,6 +3300,7 @@ function App() {
 
       setSession(null);
       setProfile(null);
+      setViewingProfile(null);
       setPosts([]);
       setPage("home");
       setMobileMenu(false);
@@ -3115,6 +3348,14 @@ function App() {
 
   const currentSession =
     session;
+
+  const displayedProfile =
+    viewingProfile ||
+    currentProfile;
+
+  const isOwnProfile =
+    displayedProfile.id ===
+    currentProfile.id;
 
   return (
     <div className="app">
@@ -3178,7 +3419,7 @@ function App() {
 
           <Sidebar
             page={page}
-            setPage={setPage}
+            setPage={navigate}
             profile={
               currentProfile
             }
@@ -3197,7 +3438,7 @@ function App() {
       <div className="desktop-sidebar">
         <Sidebar
           page={page}
-          setPage={setPage}
+          setPage={navigate}
           profile={
             currentProfile
           }
@@ -3235,11 +3476,18 @@ function App() {
             onLike={
               toggleLike
             }
+            onProfileClick={
+              openProfile
+            }
           />
         )}
 
         {page === "search" && (
-          <SearchPage />
+          <SearchPage
+            onProfileClick={
+              openProfile
+            }
+          />
         )}
 
         {page === "messages" && (
@@ -3268,13 +3516,22 @@ function App() {
         {page === "profile" && (
           <ProfilePage
             profile={
-              currentProfile
+              displayedProfile
+            }
+            isOwnProfile={
+              isOwnProfile
             }
             onEdit={() =>
               setEditProfile(
                 true
               )
             }
+            onBack={() => {
+              setViewingProfile(
+                null
+              );
+              setPage("search");
+            }}
           />
         )}
 
@@ -3318,23 +3575,33 @@ function App() {
 
       {/* PROFIL MODAL */}
 
-      {editProfile && (
-        <ProfileEditModal
-          profile={
-            currentProfile
-          }
-          onClose={() =>
-            setEditProfile(
-              false
-            )
-          }
-          onSaved={(updated) => {
-            setProfile(
-              updated
-            );
-          }}
-        />
-      )}
+      {editProfile &&
+        isOwnProfile && (
+          <ProfileEditModal
+            profile={
+              currentProfile
+            }
+            onClose={() =>
+              setEditProfile(
+                false
+              )
+            }
+            onSaved={(updated) => {
+              setProfile(
+                updated
+              );
+
+              if (
+                viewingProfile?.id ===
+                updated.id
+              ) {
+                setViewingProfile(
+                  updated
+                );
+              }
+            }}
+          />
+        )}
 
       {/* PASSWORT MODAL */}
 
