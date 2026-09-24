@@ -66,6 +66,15 @@ type Post = {
   liked?: boolean;
 };
 
+type Comment = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  profile?: Profile | null;
+};
+
 type Page =
   | "home"
   | "search"
@@ -277,16 +286,188 @@ function Avatar({
 function PostCard({
   post,
   onLike,
+  session,
+  currentProfile,
 }: {
   post: Post;
   onLike: (
     postId: string,
     liked: boolean
   ) => void;
+  session: Session;
+  currentProfile: Profile;
 }) {
   const profile = getProfileObject(
     post.profiles
   );
+
+  const [comments, setComments] =
+    useState<Comment[]>([]);
+  const [commentsOpen, setCommentsOpen] =
+    useState(false);
+  const [commentsLoading, setCommentsLoading] =
+    useState(false);
+  const [commentText, setCommentText] =
+    useState("");
+  const [commentSending, setCommentSending] =
+    useState(false);
+
+  const loadComments = async () => {
+    setCommentsLoading(true);
+
+    try {
+      const {
+        data: commentRows,
+        error: commentsError,
+      } = await supabase
+        .from("comments")
+        .select(
+          "id,post_id,user_id,content,created_at"
+        )
+        .eq("post_id", post.id)
+        .order("created_at", {
+          ascending: true,
+        });
+
+      if (commentsError) {
+        throw commentsError;
+      }
+
+      const rows =
+        (commentRows || []) as Omit<
+          Comment,
+          "profile"
+        >[];
+
+      if (rows.length === 0) {
+        setComments([]);
+        return;
+      }
+
+      const userIds = [
+        ...new Set(
+          rows.map((row) => row.user_id)
+        ),
+      ];
+
+      const {
+        data: profiles,
+        error: profilesError,
+      } = await supabase
+        .from("profiles")
+        .select(
+          "id,username,display_name,avatar_url,bio,role,verified,suspended,created_at"
+        )
+        .in("id", userIds);
+
+      if (profilesError) {
+        throw profilesError;
+      }
+
+      const profileMap = new Map(
+        ((profiles || []) as Profile[]).map(
+          (item) => [item.id, item]
+        )
+      );
+
+      setComments(
+        rows.map((row) => ({
+          ...row,
+          profile:
+            profileMap.get(row.user_id) ||
+            null,
+        }))
+      );
+    } catch (error) {
+      console.error(
+        "Kommentare konnten nicht geladen werden:",
+        error
+      );
+
+      alert(
+        `Kommentare konnten nicht geladen werden:\n\n${getErrorMessage(
+          error
+        )}`
+      );
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const toggleComments = async () => {
+    const nextOpen = !commentsOpen;
+    setCommentsOpen(nextOpen);
+
+    if (nextOpen) {
+      await loadComments();
+    }
+  };
+
+  const createComment = async () => {
+    const content =
+      commentText.trim();
+
+    if (!content) {
+      return;
+    }
+
+    if (currentProfile.suspended) {
+      alert(
+        "Dein Konto ist momentan gesperrt."
+      );
+      return;
+    }
+
+    setCommentSending(true);
+
+    try {
+      const {
+        data: createdComment,
+        error,
+      } = await supabase
+        .from("comments")
+        .insert({
+          post_id: post.id,
+          user_id: session.user.id,
+          content,
+        })
+        .select(
+          "id,post_id,user_id,content,created_at"
+        )
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setComments((current) => [
+        ...current,
+        {
+          ...(createdComment as Omit<
+            Comment,
+            "profile"
+          >),
+          profile: currentProfile,
+        },
+      ]);
+
+      setCommentText("");
+      setCommentsOpen(true);
+    } catch (error) {
+      console.error(
+        "Kommentar konnte nicht erstellt werden:",
+        error
+      );
+
+      alert(
+        `Kommentar konnte nicht erstellt werden:\n\n${getErrorMessage(
+          error
+        )}`
+      );
+    } finally {
+      setCommentSending(false);
+    }
+  };
 
   return (
     <article className="post-card">
@@ -367,12 +548,112 @@ function PostCard({
 
         <button
           type="button"
-          className="post-action"
+          className={`post-action ${
+            commentsOpen ? "liked" : ""
+          }`}
+          onClick={toggleComments}
         >
           <MessageCircle size={19} />
-          <span>Kommentieren</span>
+          <span>
+            {commentsOpen
+              ? "Kommentare schließen"
+              : "Kommentieren"}
+          </span>
         </button>
       </div>
+
+      {commentsOpen && (
+        <div className="comments-section">
+          <div className="comment-composer">
+            <Avatar
+              profile={currentProfile}
+              size={36}
+            />
+
+            <div className="comment-input-wrap">
+              <textarea
+                value={commentText}
+                onChange={(event) =>
+                  setCommentText(
+                    event.target.value
+                  )
+                }
+                placeholder="Schreibe einen Kommentar..."
+                rows={2}
+                maxLength={500}
+                disabled={commentSending}
+              />
+
+              <button
+                type="button"
+                className="primary-button comment-submit"
+                onClick={createComment}
+                disabled={
+                  commentSending ||
+                  !commentText.trim()
+                }
+              >
+                {commentSending
+                  ? "Senden..."
+                  : "Kommentieren"}
+              </button>
+            </div>
+          </div>
+
+          <div className="comments-list">
+            {commentsLoading ? (
+              <div className="comment-empty">
+                Kommentare werden geladen...
+              </div>
+            ) : comments.length === 0 ? (
+              <div className="comment-empty">
+                Noch keine Kommentare. Sei der Erste!
+              </div>
+            ) : (
+              comments.map((comment) => (
+                <div
+                  className="comment-item"
+                  key={comment.id}
+                >
+                  <Avatar
+                    profile={comment.profile || null}
+                    size={36}
+                  />
+
+                  <div className="comment-body">
+                    <div className="comment-meta">
+                      <strong>
+                        {comment.profile?.display_name ||
+                          comment.profile?.username ||
+                          "Unbekannt"}
+                      </strong>
+
+                      {comment.profile && (
+                        <BadgeRow
+                          profile={
+                            comment.profile
+                          }
+                        />
+                      )}
+
+                      <span>
+                        ·{" "}
+                        {formatDate(
+                          comment.created_at
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="comment-content">
+                      {comment.content}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -455,36 +736,6 @@ if (!data.user) {
   throw new Error("Benutzer konnte nicht erstellt werden.");
 }
 
-
-        if (error) {
-          throw error;
-        }
-
-        if (!data.user) {
-          throw new Error(
-            "Registrierung fehlgeschlagen."
-          );
-        }
-
-        const {
-          error: profileError,
-        } = await supabase
-          .from("profiles")
-          .upsert({
-            id: data.user.id,
-            username:
-              username.trim(),
-            display_name:
-              displayName.trim() ||
-              username.trim(),
-            role: "USER",
-            verified: false,
-            suspended: false,
-          });
-
-        if (profileError) {
-          throw profileError;
-        }
 
         if (data.session) {
           onLogin(data.session);
@@ -1302,6 +1553,7 @@ function Sidebar({
 function HomePage({
   posts,
   profile,
+  session,
   postContent,
   setPostContent,
   postImageFile,
@@ -1311,6 +1563,7 @@ function HomePage({
 }: {
   posts: Post[];
   profile: Profile;
+  session: Session;
   postContent: string;
   setPostContent: React.Dispatch<
     React.SetStateAction<string>
@@ -1477,6 +1730,8 @@ function HomePage({
               key={post.id}
               post={post}
               onLike={onLike}
+              session={session}
+              currentProfile={profile}
             />
           ))
         )}
@@ -2089,40 +2344,10 @@ function App() {
     }
 
     if (!data) {
-      const username =
-        user.email?.split(
-          "@"
-        )[0] || "user";
-
-      const {
-        data: created,
-        error: createError,
-      } = await supabase
-        .from("profiles")
-        .insert({
-          id: user.id,
-          username,
-          display_name:
-            username,
-          role: "USER",
-          verified: false,
-          suspended: false,
-        })
-        .select()
-        .single();
-
-      if (createError) {
-        console.error(
-          createError
-        );
-
-        return;
-      }
-
-      setProfile(
-        created as Profile
+      console.error(
+        "Kein Profil gefunden. Der handle_new_user-Trigger sollte das Profil automatisch erstellen."
       );
-
+      setProfile(null);
       return;
     }
 
@@ -2685,6 +2910,9 @@ function App() {
             posts={posts}
             profile={
               currentProfile
+            }
+            session={
+              currentSession
             }
             postContent={
               postContent
