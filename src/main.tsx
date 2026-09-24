@@ -39,9 +39,16 @@ const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
   "sb_publishable_eMlH01mR1rrwTfRqIE0rnA_XTDmW8zt";
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(
+  supabaseUrl,
+  supabaseAnonKey
+);
 
-type Role = "USER" | "MODERATOR" | "ADMIN" | "OWNER";
+type Role =
+  | "USER"
+  | "MODERATOR"
+  | "ADMIN"
+  | "OWNER";
 
 type Profile = {
   id: string;
@@ -89,21 +96,26 @@ type Page =
    HILFSFUNKTIONEN
 ========================================================= */
 
-function getProfileObject(value: unknown): Profile | null {
-  if (!value) return null;
+function getProfileObject(
+  value: unknown
+): Profile | null {
+  if (!value) {
+    return null;
+  }
 
   if (Array.isArray(value)) {
-    return (value[0] as Profile | undefined) ?? null;
+    return (
+      (value[0] as Profile | undefined) ??
+      null
+    );
   }
 
   return value as Profile;
 }
 
-/**
- * Supabase-Fehler zuverlässig in einen lesbaren Text umwandeln.
- * Das ist wichtig, weil Supabase-Fehler nicht immer instanceof Error sind.
- */
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(
+  error: unknown
+): string {
   if (!error) {
     return "Unbekannter Fehler.";
   }
@@ -133,23 +145,35 @@ function getErrorMessage(error: unknown): string {
     }
 
     if (value.details) {
-      parts.push(`Details: ${String(value.details)}`);
+      parts.push(
+        `Details: ${String(value.details)}`
+      );
     }
 
     if (value.hint) {
-      parts.push(`Hinweis: ${String(value.hint)}`);
+      parts.push(
+        `Hinweis: ${String(value.hint)}`
+      );
     }
 
     if (value.code) {
-      parts.push(`Code: ${String(value.code)}`);
+      parts.push(
+        `Code: ${String(value.code)}`
+      );
     }
 
     if (value.status) {
-      parts.push(`Status: ${String(value.status)}`);
+      parts.push(
+        `Status: ${String(value.status)}`
+      );
     }
 
     if (value.statusCode) {
-      parts.push(`Statuscode: ${String(value.statusCode)}`);
+      parts.push(
+        `Statuscode: ${String(
+          value.statusCode
+        )}`
+      );
     }
 
     if (parts.length > 0) {
@@ -157,7 +181,11 @@ function getErrorMessage(error: unknown): string {
     }
 
     try {
-      return JSON.stringify(error, null, 2);
+      return JSON.stringify(
+        error,
+        null,
+        2
+      );
     } catch {
       return "Unbekannter Supabase-Fehler.";
     }
@@ -168,32 +196,44 @@ function getErrorMessage(error: unknown): string {
 
 function formatDate(date: string) {
   const value = new Date(date);
-  const diff = Date.now() - value.getTime();
+  const diff =
+    Date.now() - value.getTime();
 
   if (diff < 60_000) {
     return "gerade eben";
   }
 
   if (diff < 3_600_000) {
-    return `${Math.floor(diff / 60_000)} Min.`;
+    return `${Math.floor(
+      diff / 60_000
+    )} Min.`;
   }
 
   if (diff < 86_400_000) {
-    return `${Math.floor(diff / 3_600_000)} Std.`;
+    return `${Math.floor(
+      diff / 3_600_000
+    )} Std.`;
   }
 
-  return value.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return value.toLocaleDateString(
+    "de-DE",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }
+  );
 }
 
 /* =========================================================
    BADGES
 ========================================================= */
 
-function BadgeRow({ profile }: { profile: Profile }) {
+function BadgeRow({
+  profile,
+}: {
+  profile: Profile;
+}) {
   return (
     <div className="badge-row">
       {profile.verified && (
@@ -206,8 +246,10 @@ function BadgeRow({ profile }: { profile: Profile }) {
       )}
 
       {(profile.role === "ADMIN" ||
-        profile.role === "MODERATOR" ||
-        profile.role === "OWNER") && (
+        profile.role ===
+          "MODERATOR" ||
+        profile.role ===
+          "OWNER") && (
         <span
           className="badge admin-badge"
           title="Team"
@@ -303,14 +345,22 @@ function PostCard({
 
   const [comments, setComments] =
     useState<Comment[]>([]);
+
   const [commentsOpen, setCommentsOpen] =
     useState(false);
-  const [commentsLoading, setCommentsLoading] =
-    useState(false);
+
+  const [
+    commentsLoading,
+    setCommentsLoading,
+  ] = useState(false);
+
   const [commentText, setCommentText] =
     useState("");
-  const [commentSending, setCommentSending] =
-    useState(false);
+
+  const [
+    commentSending,
+    setCommentSending,
+  ] = useState(false);
 
   const loadComments = async () => {
     setCommentsLoading(true);
@@ -346,7 +396,9 @@ function PostCard({
 
       const userIds = [
         ...new Set(
-          rows.map((row) => row.user_id)
+          rows.map(
+            (row) => row.user_id
+          )
         ),
       ];
 
@@ -374,8 +426,9 @@ function PostCard({
         rows.map((row) => ({
           ...row,
           profile:
-            profileMap.get(row.user_id) ||
-            null,
+            profileMap.get(
+              row.user_id
+            ) || null,
         }))
       );
     } catch (error) {
@@ -395,7 +448,9 @@ function PostCard({
   };
 
   const toggleComments = async () => {
-    const nextOpen = !commentsOpen;
+    const nextOpen =
+      !commentsOpen;
+
     setCommentsOpen(nextOpen);
 
     if (nextOpen) {
@@ -486,13 +541,18 @@ function PostCard({
             </strong>
 
             {profile && (
-              <BadgeRow profile={profile} />
+              <BadgeRow
+                profile={profile}
+              />
             )}
           </div>
 
           <span>
-            @{profile?.username || "user"} ·{" "}
-            {formatDate(post.created_at)}
+            @{profile?.username ||
+              "user"}{" "}
+            · {formatDate(
+              post.created_at
+            )}
           </span>
         </div>
 
@@ -523,7 +583,9 @@ function PostCard({
         <button
           type="button"
           className={`post-action ${
-            post.liked ? "liked" : ""
+            post.liked
+              ? "liked"
+              : ""
           }`}
           onClick={() =>
             onLike(
@@ -549,11 +611,18 @@ function PostCard({
         <button
           type="button"
           className={`post-action ${
-            commentsOpen ? "liked" : ""
+            commentsOpen
+              ? "liked"
+              : ""
           }`}
-          onClick={toggleComments}
+          onClick={
+            toggleComments
+          }
         >
-          <MessageCircle size={19} />
+          <MessageCircle
+            size={19}
+          />
+
           <span>
             {commentsOpen
               ? "Kommentare schließen"
@@ -566,28 +635,37 @@ function PostCard({
         <div className="comments-section">
           <div className="comment-composer">
             <Avatar
-              profile={currentProfile}
+              profile={
+                currentProfile
+              }
               size={36}
             />
 
             <div className="comment-input-wrap">
               <textarea
-                value={commentText}
+                value={
+                  commentText
+                }
                 onChange={(event) =>
                   setCommentText(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="Schreibe einen Kommentar..."
                 rows={2}
                 maxLength={500}
-                disabled={commentSending}
+                disabled={
+                  commentSending
+                }
               />
 
               <button
                 type="button"
                 className="primary-button comment-submit"
-                onClick={createComment}
+                onClick={
+                  createComment
+                }
                 disabled={
                   commentSending ||
                   !commentText.trim()
@@ -605,51 +683,66 @@ function PostCard({
               <div className="comment-empty">
                 Kommentare werden geladen...
               </div>
-            ) : comments.length === 0 ? (
+            ) : comments.length ===
+              0 ? (
               <div className="comment-empty">
-                Noch keine Kommentare. Sei der Erste!
+                Noch keine Kommentare.
+                Sei der Erste!
               </div>
             ) : (
-              comments.map((comment) => (
-                <div
-                  className="comment-item"
-                  key={comment.id}
-                >
-                  <Avatar
-                    profile={comment.profile || null}
-                    size={36}
-                  />
+              comments.map(
+                (comment) => (
+                  <div
+                    className="comment-item"
+                    key={
+                      comment.id
+                    }
+                  >
+                    <Avatar
+                      profile={
+                        comment.profile ||
+                        null
+                      }
+                      size={36}
+                    />
 
-                  <div className="comment-body">
-                    <div className="comment-meta">
-                      <strong>
-                        {comment.profile?.display_name ||
-                          comment.profile?.username ||
-                          "Unbekannt"}
-                      </strong>
+                    <div className="comment-body">
+                      <div className="comment-meta">
+                        <strong>
+                          {comment
+                            .profile
+                            ?.display_name ||
+                            comment
+                              .profile
+                              ?.username ||
+                            "Unbekannt"}
+                        </strong>
 
-                      {comment.profile && (
-                        <BadgeRow
-                          profile={
-                            comment.profile
-                          }
-                        />
-                      )}
-
-                      <span>
-                        ·{" "}
-                        {formatDate(
-                          comment.created_at
+                        {comment.profile && (
+                          <BadgeRow
+                            profile={
+                              comment.profile
+                            }
+                          />
                         )}
-                      </span>
-                    </div>
 
-                    <div className="comment-content">
-                      {comment.content}
+                        <span>
+                          ·{" "}
+                          {formatDate(
+                            comment.created_at
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="comment-content">
+                        {
+                          comment.content
+                        }
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                )
+              )
             )}
           </div>
         </div>
@@ -665,12 +758,14 @@ function PostCard({
 function AuthScreen({
   onLogin,
 }: {
-  onLogin: (session: Session) => void;
+  onLogin: (
+    session: Session
+  ) => void;
 }) {
   const [mode, setMode] =
-    useState<"login" | "register">(
-      "login"
-    );
+    useState<
+      "login" | "register"
+    >("login");
 
   const [email, setEmail] =
     useState("");
@@ -681,8 +776,10 @@ function AuthScreen({
   const [username, setUsername] =
     useState("");
 
-  const [displayName, setDisplayName] =
-    useState("");
+  const [
+    displayName,
+    setDisplayName,
+  ] = useState("");
 
   const [loading, setLoading] =
     useState(false);
@@ -700,7 +797,10 @@ function AuthScreen({
 
     try {
       if (mode === "login") {
-        const { data, error } =
+        const {
+          data,
+          error,
+        } =
           await supabase.auth.signInWithPassword(
             {
               email,
@@ -722,20 +822,33 @@ function AuthScreen({
           );
         }
 
-       const { data, error } =
-  await supabase.auth.signUp({
-    email,
-    password,
-  });
+        const {
+          data,
+          error,
+        } =
+          await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                username:
+                  username.trim(),
+                display_name:
+                  displayName.trim() ||
+                  username.trim(),
+              },
+            },
+          });
 
-if (error) {
-  throw error;
-}
+        if (error) {
+          throw error;
+        }
 
-if (!data.user) {
-  throw new Error("Benutzer konnte nicht erstellt werden.");
-}
-
+        if (!data.user) {
+          throw new Error(
+            "Benutzer konnte nicht erstellt werden."
+          );
+        }
 
         if (data.session) {
           onLogin(data.session);
@@ -820,7 +933,9 @@ if (!data.user) {
             type="email"
             value={email}
             onChange={(e) =>
-              setEmail(e.target.value)
+              setEmail(
+                e.target.value
+              )
             }
             placeholder="E-Mail"
             required
@@ -852,14 +967,17 @@ if (!data.user) {
           >
             {loading ? (
               "Bitte warten..."
-            ) : mode === "login" ? (
+            ) : mode ===
+              "login" ? (
               <>
                 <LogIn size={18} />
                 Anmelden
               </>
             ) : (
               <>
-                <UserPlus size={18} />
+                <UserPlus
+                  size={18}
+                />
                 Registrieren
               </>
             )}
@@ -906,10 +1024,12 @@ function ProfileEditModal({
   const [username, setUsername] =
     useState(profile.username);
 
-  const [displayName, setDisplayName] =
-    useState(
-      profile.display_name
-    );
+  const [
+    displayName,
+    setDisplayName,
+  ] = useState(
+    profile.display_name
+  );
 
   const [bio, setBio] =
     useState(profile.bio || "");
@@ -930,6 +1050,7 @@ function ProfileEditModal({
       setPreview(
         profile.avatar_url || null
       );
+
       return;
     }
 
@@ -988,8 +1109,7 @@ function ProfileEditModal({
             ?.toLowerCase() ||
           "jpg";
 
-        const path =
-          `${profile.id}/${crypto.randomUUID()}.${extension}`;
+        const path = `${profile.id}/${crypto.randomUUID()}.${extension}`;
 
         const {
           error: uploadError,
@@ -1026,24 +1146,25 @@ function ProfileEditModal({
       const {
         data,
         error,
-      } = await supabase
-        .from("profiles")
-        .update({
-          username:
-            cleanUsername,
-          display_name:
-            cleanDisplayName,
-          bio:
-            cleanBio || null,
-          avatar_url:
-            avatarUrl,
-        })
-        .eq(
-          "id",
-          profile.id
-        )
-        .select("*")
-        .single();
+      } =
+        await supabase
+          .from("profiles")
+          .update({
+            username:
+              cleanUsername,
+            display_name:
+              cleanDisplayName,
+            bio:
+              cleanBio || null,
+            avatar_url:
+              avatarUrl,
+          })
+          .eq(
+            "id",
+            profile.id
+          )
+          .select("*")
+          .single();
 
       if (error) {
         throw error;
@@ -1097,7 +1218,8 @@ function ProfileEditModal({
               width: 110,
               height: 110,
               minWidth: 110,
-              borderRadius: "50%",
+              borderRadius:
+                "50%",
               overflow: "hidden",
               border:
                 "4px solid #27272a",
@@ -1112,8 +1234,10 @@ function ProfileEditModal({
                 style={{
                   width: "100%",
                   height: "100%",
-                  objectFit: "cover",
-                  display: "block",
+                  objectFit:
+                    "cover",
+                  display:
+                    "block",
                 }}
               />
             ) : (
@@ -1381,6 +1505,7 @@ function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-brand">
         <span>🐦</span>
+
         <strong>
           CrowSocial
         </strong>
@@ -1731,7 +1856,9 @@ function HomePage({
               post={post}
               onLike={onLike}
               session={session}
-              currentProfile={profile}
+              currentProfile={
+                profile
+              }
             />
           ))
         )}
@@ -1775,13 +1902,14 @@ function SearchPage() {
       const {
         data,
         error,
-      } = await supabase
-        .from("profiles")
-        .select("*")
-        .or(
-          `username.ilike.%${safeQuery}%,display_name.ilike.%${safeQuery}%`
-        )
-        .limit(20);
+      } =
+        await supabase
+          .from("profiles")
+          .select("*")
+          .or(
+            `username.ilike.%${safeQuery}%,display_name.ilike.%${safeQuery}%`
+          )
+          .limit(20);
 
       if (!error) {
         setProfiles(
@@ -2076,9 +2204,9 @@ function SettingsPage({
         "OWNER" ? (
           <Crown size={20} />
         ) : profile.role ===
-            "ADMIN" ||
+              "ADMIN" ||
           profile.role ===
-            "MODERATOR" ? (
+              "MODERATOR" ? (
           <Shield size={20} />
         ) : (
           <User size={20} />
@@ -2300,11 +2428,15 @@ function App() {
   const [mobileMenu, setMobileMenu] =
     useState(false);
 
-  const [editProfile, setEditProfile] =
-    useState(false);
+  const [
+    editProfile,
+    setEditProfile,
+  ] = useState(false);
 
-  const [passwordModal, setPasswordModal] =
-    useState(false);
+  const [
+    passwordModal,
+    setPasswordModal,
+  ] = useState(false);
 
   const [posts, setPosts] =
     useState<Post[]>([]);
@@ -2312,10 +2444,12 @@ function App() {
   const [postContent, setPostContent] =
     useState("");
 
-  const [postImageFile, setPostImageFile] =
-    useState<File | null>(
-      null
-    );
+  const [
+    postImageFile,
+    setPostImageFile,
+  ] = useState<File | null>(
+    null
+  );
 
   /* =======================================================
      PROFIL LADEN
@@ -2327,11 +2461,12 @@ function App() {
     const {
       data,
       error,
-    } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .maybeSingle();
+    } =
+      await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
 
     if (error) {
       console.error(
@@ -2345,8 +2480,9 @@ function App() {
 
     if (!data) {
       console.error(
-        "Kein Profil gefunden. Der handle_new_user-Trigger sollte das Profil automatisch erstellen."
+        "Kein Profil gefunden."
       );
+
       setProfile(null);
       return;
     }
@@ -2364,33 +2500,34 @@ function App() {
     const {
       data,
       error,
-    } = await supabase
-      .from("posts")
-      .select(`
-        id,
-        user_id,
-        content,
-        image_url,
-        created_at,
-        profiles!posts_user_id_fkey (
+    } =
+      await supabase
+        .from("posts")
+        .select(`
           id,
-          username,
-          display_name,
-          avatar_url,
-          bio,
-          role,
-          verified,
-          suspended,
-          created_at
+          user_id,
+          content,
+          image_url,
+          created_at,
+          profiles!posts_user_id_fkey (
+            id,
+            username,
+            display_name,
+            avatar_url,
+            bio,
+            role,
+            verified,
+            suspended,
+            created_at
+          )
+        `)
+        .order(
+          "created_at",
+          {
+            ascending: false,
+          }
         )
-      `)
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      )
-      .limit(100);
+        .limit(100);
 
     if (error) {
       console.error(
@@ -2413,6 +2550,86 @@ function App() {
           liked: false,
         })
       ) as Post[];
+
+    /* =====================================================
+       LIKES AUS DER DATENBANK LADEN
+    ===================================================== */
+
+    if (
+      postList.length > 0 &&
+      session
+    ) {
+      const postIds =
+        postList.map(
+          (post) => post.id
+        );
+
+      const {
+        data: likes,
+        error: likesError,
+      } =
+        await supabase
+          .from("post_likes")
+          .select(
+            "post_id,user_id"
+          )
+          .in(
+            "post_id",
+            postIds
+          );
+
+      if (likesError) {
+        console.error(
+          "Likes konnten nicht geladen werden:",
+          likesError
+        );
+      } else {
+        const likeCounts =
+          new Map<
+            string,
+            number
+          >();
+
+        const likedPosts =
+          new Set<string>();
+
+        (
+          likes || []
+        ).forEach(
+          (like) => {
+            likeCounts.set(
+              like.post_id,
+              (likeCounts.get(
+                like.post_id
+              ) || 0) + 1
+            );
+
+            if (
+              like.user_id ===
+              session.user.id
+            ) {
+              likedPosts.add(
+                like.post_id
+              );
+            }
+          }
+        );
+
+        postList.forEach(
+          (post) => {
+            post.like_count =
+              likeCounts.get(
+                post.id
+              ) || 0;
+
+            post.liked =
+              likedPosts.has(
+                post.id
+              );
+          }
+        );
+      }
+    }
 
     setPosts(
       postList
@@ -2550,10 +2767,6 @@ function App() {
           | string
           | null = null;
 
-        /* ================================================
-           BILD HOCHLADEN
-        ================================================= */
-
         if (postImageFile) {
           const extension =
             postImageFile.name
@@ -2606,10 +2819,6 @@ function App() {
             data.publicUrl;
         }
 
-        /* ================================================
-           POST IN DATENBANK
-        ================================================= */
-
         const {
           data: createdPost,
           error: postError,
@@ -2630,11 +2839,6 @@ function App() {
             .single();
 
         if (postError) {
-          console.error(
-            "SUPABASE POST FEHLER:",
-            postError
-          );
-
           throw postError;
         }
 
@@ -2655,11 +2859,10 @@ function App() {
           err
         );
 
-        const message =
-          getErrorMessage(err);
-
         alert(
-          `Beitrag konnte nicht erstellt werden:\n\n${message}`
+          `Beitrag konnte nicht erstellt werden:\n\n${getErrorMessage(
+            err
+          )}`
         );
       }
     };
@@ -2677,6 +2880,10 @@ function App() {
     }
 
     try {
+      /* =================================================
+         LIKE ENTFERNEN
+      ================================================= */
+
       if (liked) {
         const {
           error,
@@ -2698,24 +2905,121 @@ function App() {
         if (error) {
           throw error;
         }
-      } else {
-        const {
-          error,
-        } =
-          await supabase
-            .from(
-              "post_likes"
-            )
-            .insert({
-              post_id:
-                postId,
-              user_id:
-                session.user.id,
-            });
 
-        if (error) {
-          throw error;
-        }
+        setPosts(
+          (current) =>
+            current.map(
+              (post) =>
+                post.id ===
+                postId
+                  ? {
+                      ...post,
+                      liked:
+                        false,
+                      like_count:
+                        Math.max(
+                          0,
+                          (post.like_count ||
+                            0) -
+                            1
+                        ),
+                    }
+                  : post
+            )
+        );
+
+        return;
+      }
+
+      /* =================================================
+         PRÜFEN, OB LIKE BEREITS EXISTIERT
+      ================================================= */
+
+      const {
+        data: existingLike,
+        error:
+          checkError,
+      } =
+        await supabase
+          .from(
+            "post_likes"
+          )
+          .select(
+            "post_id"
+          )
+          .eq(
+            "post_id",
+            postId
+          )
+          .eq(
+            "user_id",
+            session.user.id
+          )
+          .maybeSingle();
+
+      if (checkError) {
+        throw checkError;
+      }
+
+      /* =================================================
+         BEREITS GE-LIKED
+      ================================================= */
+
+      if (existingLike) {
+        setPosts(
+          (current) =>
+            current.map(
+              (post) =>
+                post.id ===
+                postId
+                  ? {
+                      ...post,
+                      liked:
+                        true,
+                    }
+                  : post
+            )
+        );
+
+        return;
+      }
+
+      /* =================================================
+         LIKE ERSTELLEN
+      ================================================= */
+
+      const {
+        error: insertError,
+      } =
+        await supabase
+          .from(
+            "post_likes"
+          )
+          .insert({
+            post_id:
+              postId,
+            user_id:
+              session.user.id,
+          });
+
+      /*
+       * 23505 bedeutet:
+       * Der Like existiert bereits.
+       *
+       * Das kann passieren, wenn z.B.
+       * zwei Klicks sehr schnell hintereinander
+       * ausgeführt wurden.
+       *
+       * In diesem Fall behandeln wir den Like
+       * einfach als bereits gespeichert.
+       */
+
+      if (
+        insertError &&
+        insertError.code !==
+          "23505"
+      ) {
+        throw insertError;
       }
 
       setPosts(
@@ -2727,16 +3031,15 @@ function App() {
                 ? {
                     ...post,
                     liked:
-                      !liked,
+                      true,
                     like_count:
-                      Math.max(
-                        0,
-                        (post.like_count ||
-                          0) +
-                          (liked
-                            ? -1
-                            : 1)
-                      ),
+                      insertError?.code ===
+                      "23505"
+                        ? post.like_count ||
+                          0
+                        : (post.like_count ||
+                            0) +
+                          1,
                   }
                 : post
           )
