@@ -169,7 +169,7 @@ function PostCard({
   return (
     <article className="post">
       <div className="post-head">
-        <Avatar profile={profile} size={46} />
+        <Avatar profile={profile!} size={46} />
 
         <div className="post-author">
           <div className="post-name">
